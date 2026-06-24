@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: #C9922A;
+  --gold-light: #E8B96A;
+  --gold-dark: #8C6318;
+  --brown: #3D1F0D;
+  --brown-light: #6B3A1F;
+  --brown-dark: #1C0D06;
+  --cream: #FAF4E8;
+  --cream-dark: #F0E4CC;
+  --charcoal: #1C1410;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--charcoal);
+  background-color: var(--cream);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+}
+
+::selection {
+  background-color: var(--gold);
+  color: var(--brown);
+}
+
+.gold-divider {
+  height: 1px;
+  background-color: rgba(201, 146, 42, 0.35);
+  margin: 1.5rem 0;
+}
+
+.btn-primary {
+  background-color: var(--gold);
+  color: var(--brown);
+  padding: 0.625rem 1.5rem;
+  border-radius: 2px;
+  transition: background-color 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+}
+
+.btn-primary:hover {
+  background-color: var(--gold-dark);
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  padding: 0.625rem 1.5rem;
+  border-radius: 2px;
+  transition: background-color 200ms ease, color 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+}
+
+.btn-secondary:hover {
+  background-color: var(--gold);
+  color: var(--brown);
+}
