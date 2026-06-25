@@ -33,6 +33,7 @@ export const CreateBookSchema = z.object({
   seo_keywords: z.array(z.string()).max(15).optional(),
   og_image_url: z.string().url().optional(),
   focus_keyword: z.string().max(100).optional(),
+  google_category: z.string().max(200).optional(),
 });
 
 export const UpdateBookSchema = CreateBookSchema.partial().extend({

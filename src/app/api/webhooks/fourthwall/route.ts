@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { deliverDownloadEmail } from '@/lib/email/deliverDownload';
+import { slugify } from '@/lib/utils/slugify';
 
 function getServiceClient(): SupabaseClient {
   return createSupabaseClient(
@@ -53,14 +54,6 @@ async function verifySignature(rawBody: string, signature: string | null): Promi
     .join('');
 
   return timingSafeEqual(computedHex, signature);
-}
-
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-');
 }
 
 // ── Fourthwall payload shapes ────────────────────────────────────────────
