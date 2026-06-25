@@ -1,6 +1,6 @@
 import type { SchemaTypeDefinition } from 'sanity';
+import post from './post';
+import author from './author';
+import { richTextBody, richTextBlockTypes } from './blocks/richTextBody';
 
-// Phase 2 will populate this array with: post, author, and the 7 custom
-// Portable Text block types (imageBlock, youtubeEmbed, audioEmbed,
-// calloutBox, kdpBookEmbed, divider, tableBlock).
-export const schemaTypes: SchemaTypeDefinition[] = [];
+export const schemaTypes: SchemaTypeDefinition[] = [post, author, richTextBody, ...richTextBlockTypes];
