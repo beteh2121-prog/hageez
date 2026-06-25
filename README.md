@@ -55,6 +55,51 @@ github.dev) and Vercel runs `npm install` + `npm run build` on every push.
    `@portabletext/react`'s types don't model) and an N+1 query per embed —
    while still degrading to "Book currently unavailable" if an ASIN isn't
    found, per the original spec.
+9. **`src/app/(admin)` was renamed to `src/app/admin` (no parentheses).**
+   `(admin)` is a Next.js *route group* — it organizes files without
+   adding a URL segment, so `src/app/(admin)/dashboard/page.tsx` would
+   actually serve at `/dashboard`, not `/admin/dashboard`. The original
+   blueprint's `mkdir` command created this exact mismatch: it used a
+   route group for the folder while the same document's middleware and
+   sidebar nav both assume a real `/admin/...` URL prefix. Renaming to a
+   plain `admin` folder makes the URLs match what the rest of the app
+   already assumes.
+10. **Book reordering uses up/down arrow buttons, not drag-and-drop.** True
+    drag-and-drop would need a new dependency (`@dnd-kit` or similar) not
+    in the locked stack. The arrows call the same `reorderBooks` mutation
+    and give the same end result — ask if you'd rather add real
+    drag-and-drop later.
+11. **`google_category` was added to the book Zod schema.** The original
+    spec's `books.ts` validation omitted it, but the `SeoEditor` spec says
+    it's appended to *all* product forms (merch, downloads, *and* books).
+    Added it for consistency so one generic `SeoEditor<T>` component works
+    across all three forms.
+
+## Known security tradeoff: staying on Next.js 14
+
+`npm audit` flags several Next.js CVEs disclosed after this project's
+"Next 14" decision was made. Two categories, with very different risk:
+
+- **Already covered:** `CVE-2025-29927`, a *critical* middleware
+  authorization-bypass (the kind that could let someone skip the
+  `/admin` auth check entirely), was patched in `14.2.25`. This project
+  is on `14.2.35`. Vercel's own hosting also blocks this class of attack
+  independently of which Next version you run.
+- **Not covered, and can't be without leaving Next 14:** several
+  2026-disclosed DoS/availability CVEs (e.g. unbounded memory use in the
+  image optimizer) were only patched in `15.5.10`+/`16.1.5`+ — Next.js
+  stopped backporting fixes to the 14.x line for these. No 14.x version,
+  including the latest one used here, closes them. They're
+  availability-class issues (a determined attacker could try to degrade
+  the site), not data-breach or auth-bypass issues.
+
+Closing that second gap requires moving to Next 15 or 16, which changed
+`cookies()`, `params`, and `searchParams` from synchronous to `Promise`-
+based — a breaking change touching most files in this project
+(`middleware.ts`, every dynamic route, every API route, both Supabase
+client helpers). That's a deliberate, separate decision, not something
+to fold silently into a feature phase — flag it for discussion before
+treating it as done.
 
 ## Verification performed before delivery
 
@@ -90,8 +135,12 @@ first real deploy is still the first true end-to-end test.
       AffiliateButton, PortableTextComponents (all 7 block types),
       TableOfContents, ReadingProgress. **This builds and deploys on
       Vercel as-is.**
-- [ ] **Phase 3 — Admin dashboard.** Admin layout + auth guard, SeoEditor,
-      ModalManager, products/downloads/books/orders/affiliate admin pages.
+- [x] **Phase 3 — Admin dashboard.** Admin layout + auth guard, AdminSidebar,
+      Breadcrumb, SeoEditor (generic across all 3 product forms),
+      ModalManager + MerchForm/DownloadForm/BookForm, and all 7 admin
+      pages: dashboard, products (TanStack Table), downloads (with manual
+      resend), books (with reordering), orders (expandable rows + status
+      updater), affiliate (CSV export), settings.
 - [ ] **Phase 4 — Tests & CI.** Vitest config, all 20 unit tests, GitHub
       Actions workflows.
 
