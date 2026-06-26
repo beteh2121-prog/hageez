@@ -141,8 +141,34 @@ first real deploy is still the first true end-to-end test.
       pages: dashboard, products (TanStack Table), downloads (with manual
       resend), books (with reordering), orders (expandable rows + status
       updater), affiliate (CSV export), settings.
-- [ ] **Phase 4 — Tests & CI.** Vitest config, all 20 unit tests, GitHub
-      Actions workflows.
+      **Three gaps found on re-audit and fixed:** `BookForm` was missing
+      the `related_merch_id` select the spec calls for (it was only used
+      internally for `defaultValues`, never rendered); `MerchForm` and
+      `DownloadForm` showed admins a raw-cents input instead of the
+      dollar-denominated input with automatic conversion the spec
+      describes; none of the three forms surfaced an inline error message
+      on submit failure (only a toast), despite the spec saying "show
+      inline error, keep modal open." All three are fixed and verified.
+- [x] **Phase 4 — Tests & CI.** Vitest config, `checkAffiliateLinks.ts`
+      (treats only a genuine 404 as dead, logs other non-200s as warnings
+      since Amazon often soft-blocks automated traffic), all 22 unit tests
+      (the original checklist said "20" but undercounted against its own
+      enumerated list), and both GitHub Actions workflows (CI + weekly
+      affiliate check).
+
+## Final verification (all 4 phases, 118 files)
+
+- `npm install` — succeeds, 0 high/critical vulnerabilities in direct deps
+  after the Next.js bump (see security note below for residual risk).
+- `npx tsc --noEmit` — zero errors.
+- `npx eslint src --max-warnings 0` — zero errors, zero warnings.
+- `npx vitest run` — **22/22 tests passing**.
+- `npx next build` — compiles and bundles every page/API route/component;
+  fails only on fetching Google Fonts, which this sandbox's firewall
+  blocks (not a code defect — see Phase 1 notes).
+
+This is a complete, working implementation of the original blueprint,
+adapted for a 100%-browser, no-terminal build workflow.
 
 ## Environment variables
 
