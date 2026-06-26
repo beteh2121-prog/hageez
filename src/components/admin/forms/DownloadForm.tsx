@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ interface DownloadFormProps {
 export default function DownloadForm({ initialData, onClose, onSuccess }: DownloadFormProps) {
   const { createDownload, updateDownload } = useMutateDownload();
   const { data: merchOptions } = useAdminProducts();
+  const [formError, setFormError] = useState<string | null>(null);
 
   const {
     register,
@@ -64,6 +65,7 @@ export default function DownloadForm({ initialData, onClose, onSuccess }: Downlo
   }, [title, initialData, setValue]);
 
   async function onSubmit(data: CreateDownloadInput) {
+    setFormError(null);
     try {
       if (initialData) {
         await updateDownload.mutateAsync({ id: initialData.id, ...data });
@@ -75,7 +77,9 @@ export default function DownloadForm({ initialData, onClose, onSuccess }: Downlo
       onSuccess?.();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Something went wrong');
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setFormError(message);
+      toast.error(message);
     }
   }
 
@@ -111,8 +115,15 @@ export default function DownloadForm({ initialData, onClose, onSuccess }: Downlo
         </FormField>
       </div>
 
-      <FormField label="Price (cents)" error={errors.price_cents?.message} hint="0 = free download">
-        <input type="number" {...register('price_cents', { valueAsNumber: true })} className={inputClass} />
+      <FormField label="Price (USD)" error={errors.price_cents?.message} hint="Leave as $0.00 for a free download">
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          defaultValue={initialData ? (initialData.price_cents / 100).toFixed(2) : '0.00'}
+          onChange={(e) => setValue('price_cents', Math.round(Number(e.target.value) * 100))}
+          className={inputClass}
+        />
       </FormField>
 
       <FormField label="Preview URL" error={errors.preview_url?.message}>
@@ -148,6 +159,8 @@ export default function DownloadForm({ initialData, onClose, onSuccess }: Downlo
       </FormField>
 
       <SeoEditor register={register} errors={errors} watch={watch} setValue={setValue} />
+
+      {formError && <p className="text-sm text-red-600">{formError}</p>}
 
       <div className="mt-2 flex justify-end gap-3">
         <button type="button" onClick={onClose} className="btn-secondary">

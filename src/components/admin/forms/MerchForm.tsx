@@ -24,6 +24,7 @@ export default function MerchForm({ initialData, onClose, onSuccess }: MerchForm
   const [imageRows, setImageRows] = useState<{ url: string; alt: string }[]>(
     initialData?.images && initialData.images.length > 0 ? initialData.images : [{ url: '', alt: '' }]
   );
+  const [formError, setFormError] = useState<string | null>(null);
 
   const {
     register,
@@ -86,6 +87,7 @@ export default function MerchForm({ initialData, onClose, onSuccess }: MerchForm
   }
 
   async function onSubmit(data: CreateMerchInput) {
+    setFormError(null);
     try {
       if (initialData) {
         await updateProduct.mutateAsync({ id: initialData.id, ...data });
@@ -97,7 +99,9 @@ export default function MerchForm({ initialData, onClose, onSuccess }: MerchForm
       onSuccess?.();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Something went wrong');
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setFormError(message);
+      toast.error(message);
     }
   }
 
@@ -116,8 +120,15 @@ export default function MerchForm({ initialData, onClose, onSuccess }: MerchForm
       </FormField>
 
       <div className="grid grid-cols-2 gap-4">
-        <FormField label="Price (cents)" error={errors.price_cents?.message}>
-          <input type="number" {...register('price_cents', { valueAsNumber: true })} className={inputClass} />
+        <FormField label="Price (USD)" error={errors.price_cents?.message}>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            defaultValue={initialData ? (initialData.price_cents / 100).toFixed(2) : undefined}
+            onChange={(e) => setValue('price_cents', Math.round(Number(e.target.value) * 100))}
+            className={inputClass}
+          />
         </FormField>
         <FormField label="Currency" error={errors.currency?.message}>
           <select {...register('currency')} className={inputClass}>
@@ -191,6 +202,8 @@ export default function MerchForm({ initialData, onClose, onSuccess }: MerchForm
       </div>
 
       <SeoEditor register={register} errors={errors} watch={watch} setValue={setValue} />
+
+      {formError && <p className="text-sm text-red-600">{formError}</p>}
 
       <div className="mt-2 flex justify-end gap-3">
         <button type="button" onClick={onClose} className="btn-secondary">

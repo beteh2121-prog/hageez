@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import { CreateBookSchema, type CreateBookInput } from '@/lib/validations/books';
 import { useMutateBook } from '@/hooks/useBooks';
+import { useAdminProducts } from '@/hooks/useMerch';
 import SeoEditor from '@/components/admin/SeoEditor';
 import FormField, { inputClass } from '@/components/admin/forms/FormField';
 import TagInput from '@/components/admin/forms/TagInput';
@@ -31,7 +32,9 @@ interface FetchAsinResponse {
 
 export default function BookForm({ initialData, onClose, onSuccess }: BookFormProps) {
   const { createBook, updateBook } = useMutateBook();
+  const { data: merchOptions } = useAdminProducts();
   const [fetchingAsin, setFetchingAsin] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const {
     register,
@@ -116,6 +119,7 @@ export default function BookForm({ initialData, onClose, onSuccess }: BookFormPr
   }
 
   async function onSubmit(data: CreateBookInput) {
+    setFormError(null);
     try {
       if (initialData) {
         await updateBook.mutateAsync({ id: initialData.id, ...data });
@@ -127,7 +131,9 @@ export default function BookForm({ initialData, onClose, onSuccess }: BookFormPr
       onSuccess?.();
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Something went wrong');
+      const message = err instanceof Error ? err.message : 'Something went wrong';
+      setFormError(message);
+      toast.error(message);
     }
   }
 
@@ -248,11 +254,24 @@ export default function BookForm({ initialData, onClose, onSuccess }: BookFormPr
         <input {...register('related_blog_slug')} className={inputClass} />
       </FormField>
 
+      <FormField label="Related Merch" error={errors.related_merch_id?.message}>
+        <select {...register('related_merch_id')} className={inputClass}>
+          <option value="">None</option>
+          {merchOptions?.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.title}
+            </option>
+          ))}
+        </select>
+      </FormField>
+
       <FormField label="Sort Order" error={errors.sort_order?.message}>
         <input type="number" {...register('sort_order', { valueAsNumber: true })} className={inputClass} />
       </FormField>
 
       <SeoEditor register={register} errors={errors} watch={watch} setValue={setValue} />
+
+      {formError && <p className="text-sm text-red-600">{formError}</p>}
 
       <div className="mt-2 flex justify-end gap-3">
         <button type="button" onClick={onClose} className="btn-secondary">
