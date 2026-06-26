@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createStaticClient } from '@/lib/supabase/static';
 import { buildDownloadSeo } from '@/lib/utils/buildSeoMetadata';
 import { buildDigitalDocumentSchema } from '@/lib/utils/buildSchemaOrg';
 import SchemaScript from '@/components/shared/SchemaScript';
@@ -13,7 +14,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 const FOURTHWALL_STORE_URL = process.env.FOURTHWALL_STORE_URL ?? '';
 
 export async function generateStaticParams() {
-  const supabase = await createClient();
+  const supabase = createStaticClient();
   const { data } = await supabase.from('downloads').select('slug');
   return (data ?? []).map((d) => ({ slug: d.slug }));
 }

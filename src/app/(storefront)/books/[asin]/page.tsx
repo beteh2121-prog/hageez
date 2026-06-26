@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createStaticClient } from '@/lib/supabase/static';
 import { buildBookSeo } from '@/lib/utils/buildSeoMetadata';
 import { buildBookSchema } from '@/lib/utils/buildSchemaOrg';
 import SchemaScript from '@/components/shared/SchemaScript';
@@ -13,7 +14,7 @@ export const revalidate = 3600;
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 
 export async function generateStaticParams() {
-  const supabase = await createClient();
+  const supabase = createStaticClient();
   const { data } = await supabase.from('kdp_books').select('asin').eq('is_published', true);
   return (data ?? []).map((book) => ({ asin: book.asin }));
 }
