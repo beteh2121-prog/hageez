@@ -157,11 +157,19 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const supabase = getServiceClient();
 
-  const { data: logRow } = await supabase
+  const { data: logRow, error: logInsertError } = await supabase
     .from('webhook_logs')
     .insert({ source: 'fourthwall', event_type: payload.type, payload, status: 'received' })
     .select('id')
     .single();
+
+  if (logInsertError) {
+    // This should never fail silently — if you're seeing this in Vercel's
+    // logs, that's the real reason webhook_logs stayed empty despite a 200
+    // response. Common causes: SUPABASE_SERVICE_ROLE_KEY is missing/wrong/
+    // truncated in Vercel's env vars, or NEXT_PUBLIC_SUPABASE_URL is wrong.
+    console.error('Failed to insert webhook_logs row:', logInsertError.message, logInsertError);
+  }
 
   try {
     await handleEvent(supabase, payload);
@@ -218,7 +226,7 @@ async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallPro
   const priceCents = Math.round((data.variants?.[0]?.unitPrice?.value ?? 0) * 100);
 
   if (isDigitalProduct(data)) {
-    await supabase.from('downloads').upsert(
+    const { error } = await supabase.from('downloads').upsert(
       {
         fourthwall_product_id: data.id,
         title: data.name,
@@ -228,8 +236,9 @@ async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallPro
       },
       { onConflict: 'fourthwall_product_id' }
     );
+    if (error) throw new Error(`downloads upsert failed: ${error.message}`);
   } else {
-    await supabase.from('merch').upsert(
+    const { error } = await supabase.from('merch').upsert(
       {
         fourthwall_id: data.id,
         title: data.name,
@@ -241,13 +250,14 @@ async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallPro
       },
       { onConflict: 'fourthwall_id' }
     );
+    if (error) throw new Error(`merch upsert failed: ${error.message}`);
   }
 }
 
 async function handleOrderPlaced(supabase: SupabaseClient, data: FourthwallOrderData): Promise<void> {
   const customerEmail = data.email ?? '';
 
-  await supabase.from('orders').upsert(
+  const { error: orderUpsertError } = await supabase.from('orders').upsert(
     {
       fourthwall_order_id: data.id,
       status: 'paid',
@@ -258,6 +268,7 @@ async function handleOrderPlaced(supabase: SupabaseClient, data: FourthwallOrder
     },
     { onConflict: 'fourthwall_order_id' }
   );
+  if (orderUpsertError) throw new Error(`orders upsert failed: ${orderUpsertError.message}`);
 
   const offers = data.offers ?? [];
 
