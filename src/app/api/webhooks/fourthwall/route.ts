@@ -37,6 +37,9 @@ function timingSafeEqual(a: string, b: string): boolean {
   return result === 0;
 }
 
+// Per https://docs.fourthwall.com/webhooks/signature-verification — the
+// signature is HMAC-SHA256 over the raw body, BASE64 encoded (not hex),
+// sent in the `X-Fourthwall-Hmac-SHA256` header.
 async function verifySignature(rawBody: string, signature: string | null): Promise<boolean> {
   if (!signature) return false;
 
@@ -49,18 +52,18 @@ async function verifySignature(rawBody: string, signature: string | null): Promi
     ['sign']
   );
   const signatureBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody));
-  const computedHex = Array.from(new Uint8Array(signatureBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+  const computedBase64 = Buffer.from(signatureBuffer).toString('base64');
 
-  return timingSafeEqual(computedHex, signature);
+  return timingSafeEqual(computedBase64, signature);
 }
 
 // ── Fourthwall payload shapes ────────────────────────────────────────────
-// These interfaces document the field names referenced in the original
-// build spec. Confirm them against a real Fourthwall test event in
-// webhook_logs.payload before going live, and adjust if their actual
-// schema differs — that's why every access below is optional-chained.
+// Confirmed against https://docs.fourthwall.com (webhook model, order
+// schema, product schema) as of this build. The webhook payload for
+// products/orders may not be byte-identical to the REST API's read
+// schemas, so every field below is still optional-chained defensively —
+// double check actual values in webhook_logs.payload against a real test
+// event before relying on a field not listed here.
 
 interface FourthwallMoney {
   value?: number;
@@ -71,30 +74,57 @@ interface FourthwallImage {
   url: string;
 }
 
+interface FourthwallDigitalFile {
+  uri: string;
+  name: string;
+}
+
 interface FourthwallProductData {
   id: string;
   name?: string;
-  title?: string;
   description?: string;
-  metadata?: { type?: string };
   variants?: { unitPrice?: FourthwallMoney }[];
   images?: FourthwallImage[];
+  // Presence of a non-empty digitalFiles array is the documented signal
+  // for "this offer is a digital product" — more reliable than `type`,
+  // whose read-side enum (STANDARD | GIFT_CARD | UNKNOWN) doesn't actually
+  // include a "digital" value despite the create endpoint accepting
+  // type: "digital" on input.
+  digitalFiles?: FourthwallDigitalFile[];
 }
 
-interface FourthwallLineItem {
-  productId?: string;
+interface FourthwallOfferVariant {
   unitPrice?: FourthwallMoney;
-  metadata?: { type?: string };
 }
+
+interface FourthwallOffer {
+  id: string;
+  variant?: FourthwallOfferVariant;
+}
+
+// Real order status enum per Fourthwall's Order schema. Note there is no
+// REFUNDED value — Fourthwall's webhook API does not appear to expose
+// refunds as an order status or a separate event. Refunds currently need
+// to be reflected manually via /admin/orders' status dropdown until/unless
+// Fourthwall exposes a refund signal.
+type FourthwallOrderStatus =
+  | 'CONFIRMED'
+  | 'PARTIALLY_IN_PRODUCTION'
+  | 'IN_PRODUCTION'
+  | 'PARTIALLY_SHIPPED'
+  | 'SHIPPED'
+  | 'PARTIALLY_DELIVERED'
+  | 'DELIVERED'
+  | 'CANCELLED'
+  | 'COMPLETED';
 
 interface FourthwallOrderData {
   id: string;
-  customer?: { email?: string };
   email?: string;
-  totals?: { total?: FourthwallMoney };
-  shippingAddress?: Record<string, unknown>;
-  lineItems?: FourthwallLineItem[];
-  tracking?: Record<string, unknown>;
+  status?: FourthwallOrderStatus;
+  amounts?: { total?: FourthwallMoney };
+  shipping?: { address?: Record<string, unknown> };
+  offers?: FourthwallOffer[];
 }
 
 interface FourthwallEvent {
@@ -110,7 +140,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const rawBody = await request.text();
-  const signature = request.headers.get('x-fourthwall-signature');
+  const signature = request.headers.get('x-fourthwall-hmac-sha256');
   const isValid = await verifySignature(rawBody, signature);
 
   if (!isValid) {
@@ -161,33 +191,33 @@ export async function POST(request: Request): Promise<NextResponse> {
 
 async function handleEvent(supabase: SupabaseClient, payload: FourthwallEvent): Promise<void> {
   switch (payload.type) {
-    case 'product.created':
-    case 'product.updated':
+    case 'PRODUCT_CREATED':
+    case 'PRODUCT_UPDATED':
       await handleProductUpsert(supabase, payload.data as unknown as FourthwallProductData);
       return;
-    case 'order.paid':
-      await handleOrderPaid(supabase, payload.data as unknown as FourthwallOrderData);
+    case 'ORDER_PLACED':
+      await handleOrderPlaced(supabase, payload.data as unknown as FourthwallOrderData);
       return;
-    case 'order.shipped':
-      await handleOrderShipped(supabase, payload.data as unknown as FourthwallOrderData);
-      return;
-    case 'order.refunded':
-      await handleOrderRefunded(supabase, payload.data as unknown as FourthwallOrderData);
+    case 'ORDER_UPDATED':
+      await handleOrderUpdated(supabase, payload.data as unknown as FourthwallOrderData);
       return;
     default:
-      // All other events: nothing to do, but the 'processed' update above
-      // still marks the log row as handled — its event_type column
-      // already records what it was.
+      // All other event types (cart abandonment, memberships, donations,
+      // gifts, promotions, newsletter signups) aren't used by this site —
+      // logged via webhook_logs above, nothing further to do.
       return;
   }
 }
 
+function isDigitalProduct(data: FourthwallProductData): boolean {
+  return Array.isArray(data.digitalFiles) && data.digitalFiles.length > 0;
+}
+
 async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallProductData): Promise<void> {
-  const slug = slugify(data.name ?? data.title ?? '');
-  const isDigital = data.metadata?.type === 'digital_download';
+  const slug = slugify(data.name ?? '');
   const priceCents = Math.round((data.variants?.[0]?.unitPrice?.value ?? 0) * 100);
 
-  if (isDigital) {
+  if (isDigitalProduct(data)) {
     await supabase.from('downloads').upsert(
       {
         fourthwall_product_id: data.id,
@@ -214,38 +244,36 @@ async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallPro
   }
 }
 
-async function handleOrderPaid(supabase: SupabaseClient, data: FourthwallOrderData): Promise<void> {
-  const customerEmail = data.customer?.email ?? data.email ?? '';
+async function handleOrderPlaced(supabase: SupabaseClient, data: FourthwallOrderData): Promise<void> {
+  const customerEmail = data.email ?? '';
 
   await supabase.from('orders').upsert(
     {
       fourthwall_order_id: data.id,
       status: 'paid',
-      total_cents: Math.round((data.totals?.total?.value ?? 0) * 100),
-      currency: data.totals?.total?.currency ?? 'USD',
-      shipping_address: data.shippingAddress ?? null,
-      line_items: data.lineItems ?? [],
+      total_cents: Math.round((data.amounts?.total?.value ?? 0) * 100),
+      currency: data.amounts?.total?.currency ?? 'USD',
+      shipping_address: data.shipping?.address ?? null,
+      line_items: data.offers ?? [],
     },
     { onConflict: 'fourthwall_order_id' }
   );
 
-  const lineItems = data.lineItems ?? [];
+  const offers = data.offers ?? [];
 
-  for (const item of lineItems) {
-    if (item.metadata?.type !== 'digital_download') continue;
-
+  for (const offer of offers) {
     const { data: download } = await supabase
       .from('downloads')
       .select('id, file_path')
-      .eq('fourthwall_product_id', item.productId ?? '')
+      .eq('fourthwall_product_id', offer.id)
       .single();
 
-    if (!download) continue;
+    if (!download) continue; // Not a digital product we're tracking — skip.
 
     await supabase.from('download_purchases').insert({
       download_id: download.id,
       fourthwall_order_id: data.id,
-      amount_paid_cents: Math.round((item.unitPrice?.value ?? 0) * 100),
+      amount_paid_cents: Math.round((offer.variant?.unitPrice?.value ?? 0) * 100),
       delivery_email: customerEmail,
     });
 
@@ -266,7 +294,7 @@ async function handleOrderPaid(supabase: SupabaseClient, data: FourthwallOrderDa
 
       await supabase.from('webhook_logs').insert({
         source: 'fourthwall',
-        event_type: 'order.paid',
+        event_type: 'ORDER_PLACED',
         payload: { downloadId: download.id, email: customerEmail, error: result.error },
         status: 'delivery_failed',
       });
@@ -274,18 +302,32 @@ async function handleOrderPaid(supabase: SupabaseClient, data: FourthwallOrderDa
   }
 }
 
-async function handleOrderShipped(supabase: SupabaseClient, data: FourthwallOrderData): Promise<void> {
-  await supabase
-    .from('orders')
-    .update({ status: 'shipped', metadata: data.tracking ?? null })
-    .eq('fourthwall_order_id', data.id);
+async function handleOrderUpdated(supabase: SupabaseClient, data: FourthwallOrderData): Promise<void> {
+  const mappedStatus = mapOrderStatus(data.status);
+  if (!mappedStatus) return; // Unrecognized status — leave our record as-is.
+
+  await supabase.from('orders').update({ status: mappedStatus }).eq('fourthwall_order_id', data.id);
 }
 
-async function handleOrderRefunded(supabase: SupabaseClient, data: FourthwallOrderData): Promise<void> {
-  await supabase.from('orders').update({ status: 'refunded' }).eq('fourthwall_order_id', data.id);
-
-  await supabase
-    .from('download_purchases')
-    .update({ revoked_at: new Date().toISOString() })
-    .eq('fourthwall_order_id', data.id);
+function mapOrderStatus(
+  status: FourthwallOrderStatus | undefined
+): 'paid' | 'processing' | 'shipped' | 'delivered' | 'cancelled' | null {
+  switch (status) {
+    case 'CONFIRMED':
+      return 'paid';
+    case 'PARTIALLY_IN_PRODUCTION':
+    case 'IN_PRODUCTION':
+      return 'processing';
+    case 'PARTIALLY_SHIPPED':
+    case 'SHIPPED':
+      return 'shipped';
+    case 'PARTIALLY_DELIVERED':
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return 'delivered';
+    case 'CANCELLED':
+      return 'cancelled';
+    default:
+      return null;
+  }
 }
