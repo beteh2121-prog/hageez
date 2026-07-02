@@ -27,6 +27,7 @@ export interface Merch {
   status: 'active' | 'archived' | 'draft';
   featured: boolean;
   stock_count: number | null;
+  source: 'manual' | 'fourthwall';
   seo_title: string | null;
   seo_description: string | null;
   seo_keywords: string[] | null;
@@ -42,8 +43,8 @@ export interface Download {
   title: string;
   slug: string;
   description: string | null;
-  file_path: string;
-  file_type: 'pdf' | 'epub' | 'mp3' | 'video';
+  file_path: string | null;
+  file_type: 'pdf' | 'epub' | 'mp3' | 'video' | null;
   file_size_bytes: number | null;
   price_cents: number;
   preview_url: string | null;
@@ -51,6 +52,9 @@ export interface Download {
   featured: boolean;
   related_merch_id: string | null;
   fourthwall_product_id: string | null;
+  gumroad_product_id: string | null;
+  source: 'manual' | 'fourthwall' | 'gumroad';
+  external_url: string | null;
   seo_title: string | null;
   seo_description: string | null;
   seo_keywords: string[] | null;

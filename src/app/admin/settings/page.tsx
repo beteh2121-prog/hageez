@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
 import Breadcrumb from '@/components/admin/Breadcrumb';
+import CatalogSyncPanel from '@/components/admin/CatalogSyncPanel';
 import { useProfile, useUpdateProfile } from '@/hooks/useAuth';
 import { UpdateProfileSchema, type UpdateProfileInput } from '@/lib/validations/auth';
 import { inputClass } from '@/components/admin/forms/FormField';
@@ -39,6 +40,10 @@ export default function AdminSettingsPage() {
     <div>
       <Breadcrumb items={[{ label: 'Settings' }]} />
       <h1 className="mb-6 font-serif text-2xl text-brown">Settings</h1>
+
+      <div className="mb-8">
+        <CatalogSyncPanel />
+      </div>
 
       <div className="max-w-md rounded-brand-md border border-gold/10 bg-white p-6 shadow-gold-sm">
         <p className="mb-4 font-serif text-lg text-brown">Your Profile</p>

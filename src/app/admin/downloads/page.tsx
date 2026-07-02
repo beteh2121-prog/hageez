@@ -65,57 +65,77 @@ export default function AdminDownloadsPage() {
             <thead className="bg-cream-dark text-left text-charcoal/60">
               <tr>
                 <th className="px-4 py-3 font-medium">Title</th>
+                <th className="px-4 py-3 font-medium">Source</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Price</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {(downloads ?? []).map((download) => (
-                <tr key={download.id} className="border-t border-gold/5">
-                  <td className="px-4 py-3">{download.title}</td>
-                  <td className="px-4 py-3 uppercase text-charcoal/60">{download.file_type}</td>
-                  <td className="px-4 py-3">{formatPrice(download.price_cents)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setModal({ type: 'EditDownload', data: download })}
-                        className="text-sm text-gold hover:underline"
+              {(downloads ?? []).map((download) => {
+                const isManual = download.source === 'manual';
+                return (
+                  <tr key={download.id} className="border-t border-gold/5">
+                    <td className="px-4 py-3">{download.title}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={
+                          isManual
+                            ? 'rounded-full bg-gray-100 px-2 py-1 text-xs capitalize text-gray-600'
+                            : 'rounded-full bg-gold/10 px-2 py-1 text-xs capitalize text-gold-dark'
+                        }
                       >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setResendTarget(download)}
-                        aria-label="Resend email"
-                        className="text-charcoal/60 hover:text-gold"
-                      >
-                        <Send className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (!window.confirm(`Delete "${download.title}"? This cannot be undone.`)) return;
-                          try {
-                            await deleteDownload.mutateAsync(download.id);
-                            toast.success('Download deleted');
-                          } catch (err) {
-                            toast.error(err instanceof Error ? err.message : 'Failed to delete');
-                          }
-                        }}
-                        aria-label="Delete download"
-                        className="text-red-600 hover:underline"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {download.source}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 uppercase text-charcoal/60">{download.file_type ?? '—'}</td>
+                    <td className="px-4 py-3">{formatPrice(download.price_cents)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-3">
+                        {isManual && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setModal({ type: 'EditDownload', data: download })}
+                              className="text-sm text-gold hover:underline"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setResendTarget(download)}
+                              aria-label="Resend email"
+                              className="text-charcoal/60 hover:text-gold"
+                            >
+                              <Send className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                        {!isManual && <span className="text-xs text-charcoal/40">Managed by sync</span>}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!window.confirm(`Delete "${download.title}"? This cannot be undone.`)) return;
+                            try {
+                              await deleteDownload.mutateAsync(download.id);
+                              toast.success('Download deleted');
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : 'Failed to delete');
+                            }
+                          }}
+                          aria-label="Delete download"
+                          className="text-red-600 hover:underline"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {(downloads ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-charcoal/50">
+                  <td colSpan={5} className="px-4 py-8 text-center text-charcoal/50">
                     No downloads yet.
                   </td>
                 </tr>
