@@ -8,8 +8,9 @@ function assertNoPath(url: string, varName: string): string {
   }
   if (parsed.pathname !== '/' && parsed.pathname !== '') {
     throw new Error(
-      `${varName} should be the bare project URL with no path — e.g. "https://xxxx.supabase.co". ` +
-        `Got "${trimmed}", which has "${parsed.pathname}" appended. Remove everything after ".supabase.co".`
+      `${varName} must be the bare project URL with no path — ` +
+      `e.g. "https://xxxx.supabase.co". Got "${trimmed}" which has ` +
+      `"${parsed.pathname}" appended. Remove everything after ".supabase.co".`
     );
   }
   return trimmed.replace(/\/+$/, '');
