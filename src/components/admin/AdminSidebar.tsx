@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Settings,
   LogOut,
+  PenSquare,
 } from 'lucide-react';
 import { useSignOut } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils/cn';
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: '/admin/books', label: 'Books', icon: BookOpen },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { href: '/admin/affiliate', label: 'Affiliate', icon: TrendingUp },
+  { href: '/studio', label: 'Blog (Studio)', icon: PenSquare },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -45,7 +47,9 @@ export default function AdminSidebar({ email }: { email: string }) {
               href={item.href}
               className={cn(
                 'flex items-center gap-3 rounded-brand border-l-[3px] px-3 py-2 text-sm transition-colors',
-                isActive ? 'border-gold bg-white/5 text-gold' : 'border-transparent text-cream/60 hover:text-cream'
+                isActive
+                  ? 'border-gold bg-white/5 text-gold'
+                  : 'border-transparent text-cream/60 hover:text-cream'
               )}
             >
               <Icon className="h-4 w-4" />
