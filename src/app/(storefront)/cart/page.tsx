@@ -2,6 +2,9 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
 import PriceTag from '@/components/shared/PriceTag';
 import EmptyState from '@/components/shared/EmptyState';
@@ -11,6 +14,45 @@ export default function CartPage() {
   const removeItem = useCartStore((state) => state.removeItem);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const total = useCartStore((state) => state.total());
+  const [checkingOut, setCheckingOut] = useState(false);
+
+  async function handleCheckout() {
+    // Only merch items can go through Fourthwall checkout.
+    // Download items go through their own delivery flow.
+    const merchItems = items.filter((i) => i.type === 'merch');
+
+    if (merchItems.length === 0) {
+      toast.error('No purchasable items in cart. Visit each download page to buy individually.');
+      return;
+    }
+
+    setCheckingOut(true);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: merchItems.map((item) => ({
+            fourthwall_id: item.id,
+            quantity: item.quantity,
+          })),
+        }),
+      });
+
+      const data = (await res.json()) as { checkoutUrl?: string; error?: string };
+
+      if (!res.ok || !data.checkoutUrl) {
+        toast.error(data.error ?? 'Could not start checkout');
+        return;
+      }
+
+      window.location.href = data.checkoutUrl;
+    } catch {
+      toast.error('Could not reach checkout. Please try again.');
+    } finally {
+      setCheckingOut(false);
+    }
+  }
 
   if (items.length === 0) {
     return (
@@ -47,30 +89,56 @@ export default function CartPage() {
             <div className="flex-1">
               <p className="font-serif text-brown">{item.title}</p>
               <PriceTag cents={item.price_cents} />
+              {item.type === 'download' && (
+                <p className="mt-1 text-xs text-charcoal/50">Visit the download page to purchase</p>
+              )}
             </div>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={item.quantity}
-              onChange={(e) => updateQuantity(item.id, Number(e.target.value))}
-              className="w-16 rounded-brand border border-gold/30 px-2 py-1 text-center"
-            />
-            <button type="button" onClick={() => removeItem(item.id)} className="text-sm text-red-600 hover:underline">
+            {item.type === 'merch' && (
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={item.quantity}
+                onChange={(e) => updateQuantity(item.id, Number(e.target.value))}
+                className="w-16 rounded-brand border border-gold/30 px-2 py-1 text-center text-sm"
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => removeItem(item.id)}
+              className="text-sm text-red-600 hover:underline"
+            >
               Remove
             </button>
           </div>
         ))}
       </div>
 
-      <div className="mt-8 flex items-center justify-between border-t border-gold/20 pt-4">
-        <p className="font-serif text-xl text-brown">Total</p>
-        <PriceTag cents={total} />
-      </div>
+      <div className="mt-8 border-t border-gold/20 pt-4">
+        <div className="flex items-center justify-between">
+          <p className="font-serif text-xl text-brown">Total</p>
+          <PriceTag cents={total} />
+        </div>
 
-      <p className="mt-2 text-sm text-charcoal/50">
-        Each item completes checkout on its own Fourthwall product page — click into a product to buy it.
-      </p>
+        <button
+          type="button"
+          onClick={handleCheckout}
+          disabled={checkingOut}
+          className="btn-primary mt-4 inline-flex w-full items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {checkingOut ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading checkout…
+            </>
+          ) : (
+            'Checkout'
+          )}
+        </button>
+        <p className="mt-2 text-center text-xs text-charcoal/40">
+          Secure checkout powered by Fourthwall
+        </p>
+      </div>
     </div>
   );
 }
