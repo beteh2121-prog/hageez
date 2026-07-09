@@ -1,13 +1,15 @@
 /**
- * Client for Fourthwall's Storefront API — confirmed against
- * https://docs.fourthwall.com/storefront-api as of this build. This is a
- * DIFFERENT API from the Platform API used for orders/webhooks: the
- * Storefront API is read-only, scoped to published products, and
- * authenticated with a simple storefront_token query param rather than
- * Basic Auth.
+ * Client for Fourthwall's Storefront API.
+ * Confirmed against https://docs.fourthwall.com/storefront-api
  *
- * Get a token: Fourthwall dashboard → Settings → For Developers →
- * Headless → Storefront API token.
+ * Auth: storefront_token query param (NOT Basic Auth)
+ * Get token: Fourthwall → Settings → For Developers → Headless → Storefront API token
+ *
+ * This client is used for TWO purposes:
+ * 1. Syncing the product catalog into our Supabase database (all products
+ *    from Fourthwall are treated as PHYSICAL MERCH — digital downloads
+ *    come from Gumroad instead)
+ * 2. Creating checkout sessions when a customer clicks "Buy Now"
  */
 
 const STOREFRONT_API_BASE = 'https://storefront-api.fourthwall.com/v1';
@@ -40,7 +42,6 @@ export interface FourthwallStorefrontProduct {
   slug: string;
   description: string;
   state: { type: string };
-  access: { type: string };
   images: FourthwallStorefrontImage[];
   variants: FourthwallStorefrontVariant[];
   createdAt: string;
@@ -56,22 +57,27 @@ interface PagedResponse<T> {
   };
 }
 
+interface FourthwallCart {
+  checkoutUrl?: string;
+  checkout_url?: string;
+}
+
 export class FourthwallApiError extends Error {}
 
 function getStorefrontToken(): string {
   const token = process.env.FOURTHWALL_STOREFRONT_TOKEN;
   if (!token) {
     throw new FourthwallApiError(
-      'FOURTHWALL_STOREFRONT_TOKEN is not set. Get one from Fourthwall → Settings → For Developers → Headless.'
+      'FOURTHWALL_STOREFRONT_TOKEN is not set. ' +
+      'Get one from Fourthwall → Settings → For Developers → Headless.'
     );
   }
   return token;
 }
 
 /**
- * Fetches every product in the shop's built-in "all" collection — every
- * Fourthwall shop has this collection automatically, no setup required.
- * Paginated internally; returns the full combined list.
+ * Fetch every product from the built-in "all" collection.
+ * All products are treated as physical merch.
  */
 export async function fetchAllFourthwallProducts(): Promise<FourthwallStorefrontProduct[]> {
   const token = getStorefrontToken();
@@ -80,12 +86,19 @@ export async function fetchAllFourthwallProducts(): Promise<FourthwallStorefront
   let hasNextPage = true;
 
   while (hasNextPage) {
-    const url = `${STOREFRONT_API_BASE}/collections/all/products?storefront_token=${token}&page=${page}&size=50`;
+    const url =
+      STOREFRONT_API_BASE +
+      '/collections/all/products?storefront_token=' +
+      token +
+      '&page=' +
+      page +
+      '&size=50';
+
     const response = await fetch(url);
 
     if (!response.ok) {
       throw new FourthwallApiError(
-        `Fourthwall Storefront API returned ${response.status} ${response.statusText}`
+        'Fourthwall Storefront API returned ' + response.status + ' ' + response.statusText
       );
     }
 
@@ -99,19 +112,66 @@ export async function fetchAllFourthwallProducts(): Promise<FourthwallStorefront
 }
 
 /**
- * Fourthwall's Storefront API has no documented field that marks a
- * product as a "digital download" the way our schema needs — there is no
- * `digitalFiles` array in this API's product schema (that was a previous,
- * incorrect assumption in this codebase). Until Fourthwall exposes a real
- * signal for this via the Storefront API, the practical workaround is:
- * tag digital products with a recognizable naming convention in
- * Fourthwall itself (e.g. a tag/prefix in the product name, or putting
- * them in a separate Fourthwall collection named "digital"), and detect
- * that here. This function checks for a literal "[digital]" prefix or
- * suffix in the product name as a simple, visible, creator-controlled
- * signal — rename in Fourthwall's dashboard to (re)classify a product.
+ * Create a Fourthwall checkout session from a list of items.
+ * Each item needs: fourthwall product ID + quantity.
+ * Returns the checkout URL to redirect the customer to.
  */
-export function isDigitalProductByNaming(product: FourthwallStorefrontProduct): boolean {
-  const name = product.name.toLowerCase();
-  return name.includes('[digital]');
+export async function createFourthwallCheckout(
+  items: { fourthwall_id: string; quantity: number }[]
+): Promise<string> {
+  const token = getStorefrontToken();
+
+  // Step 1: For each product ID, fetch the product to get its first variant ID
+  const cartItems: { variantId: string; quantity: number }[] = [];
+
+  for (const item of items) {
+    const productRes = await fetch(
+      STOREFRONT_API_BASE + '/products/' + item.fourthwall_id + '?storefront_token=' + token
+    );
+
+    if (!productRes.ok) {
+      throw new FourthwallApiError(
+        'Could not find Fourthwall product: ' + item.fourthwall_id +
+        '. Verify this ID matches a real product in your Fourthwall store.'
+      );
+    }
+
+    const product = (await productRes.json()) as FourthwallStorefrontProduct;
+    const variantId = product.variants[0]?.id;
+
+    if (!variantId) {
+      throw new FourthwallApiError(
+        'Product "' + product.name + '" has no variants — cannot add to checkout.'
+      );
+    }
+
+    cartItems.push({ variantId, quantity: item.quantity });
+  }
+
+  // Step 2: Create the cart and get the checkout URL
+  const cartRes = await fetch(
+    STOREFRONT_API_BASE + '/carts?storefront_token=' + token,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: cartItems }),
+    }
+  );
+
+  if (!cartRes.ok) {
+    const errorText = await cartRes.text();
+    throw new FourthwallApiError('Fourthwall cart creation failed: ' + errorText);
+  }
+
+  const cart = (await cartRes.json()) as FourthwallCart;
+  const checkoutUrl = cart.checkoutUrl ?? cart.checkout_url;
+
+  if (!checkoutUrl) {
+    throw new FourthwallApiError(
+      'No checkout URL returned from Fourthwall. ' +
+      'Check your FOURTHWALL_STOREFRONT_TOKEN and store configuration.'
+    );
+  }
+
+  return checkoutUrl;
 }

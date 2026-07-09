@@ -20,45 +20,37 @@ export default function DownloadCta({ download, storeUrl }: DownloadCtaProps) {
   const Icon = download.file_type ? FILE_ICONS[download.file_type] : ExternalLink;
   const hasPurchased = !!session && !!purchasedIds?.includes(download.id);
 
-  // Synced from Fourthwall or Gumroad: we never hold the file. Checkout,
-  // payment (if any), and delivery all happen on that platform — even for
-  // a $0 item, since both platforms still run their own claim/checkout
-  // flow rather than handing us a file to redirect to.
-  if (download.source === 'gumroad' && download.external_url) {
+  // GUMROAD: link directly to Gumroad for purchase and delivery
+  if (download.source === 'gumroad') {
+    const url = download.external_url;
+    if (!url) {
+      return <p className="text-sm text-charcoal/50">This product is currently unavailable.</p>;
+    }
     return (
-      <a
-        href={download.external_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn-primary inline-flex items-center gap-2"
-      >
-        <Icon className="h-4 w-4" />
-        {download.price_cents === 0 ? 'Get on Gumroad' : `Buy on Gumroad — ${formatPrice(download.price_cents)}`}
-      </a>
+      <div className="flex flex-col gap-2">
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn-primary inline-flex items-center gap-2"
+        >
+          <ExternalLink className="h-4 w-4" />
+          {download.price_cents === 0
+            ? 'Get for Free on Gumroad'
+            : 'Buy on Gumroad — ' + formatPrice(download.price_cents)}
+        </a>
+        <p className="text-xs text-charcoal/40">
+          You will be taken to Gumroad to complete your purchase.
+        </p>
+      </div>
     );
   }
 
-  if (download.source === 'fourthwall' && download.fourthwall_product_id) {
-    return (
-      <a
-        href={`${storeUrl}/products/${download.fourthwall_product_id}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="btn-primary inline-flex items-center gap-2"
-      >
-        <Icon className="h-4 w-4" />
-        {download.price_cents === 0
-          ? 'Get on Fourthwall'
-          : `Buy on Fourthwall — ${formatPrice(download.price_cents)}`}
-      </a>
-    );
-  }
-
-  // Manual download: we host the actual file in Supabase Storage.
+  // MANUAL free or already purchased: deliver via our signed Supabase URL
   if (hasPurchased || download.price_cents === 0) {
     return (
       <a
-        href={`/api/downloads/free?download_id=${download.id}`}
+        href={'/api/downloads/free?download_id=' + download.id}
         className="btn-primary inline-flex items-center gap-2"
       >
         <Icon className="h-4 w-4" />
@@ -67,18 +59,21 @@ export default function DownloadCta({ download, storeUrl }: DownloadCtaProps) {
     );
   }
 
+  // MANUAL paid: buy via Fourthwall, we email the file after payment
   return (
     <div className="flex flex-col gap-2">
       <a
-        href={`${storeUrl}/products/${download.fourthwall_product_id}`}
+        href={storeUrl + '/products/' + (download.fourthwall_product_id ?? '')}
         target="_blank"
         rel="noopener noreferrer"
         className="btn-secondary inline-flex items-center gap-2"
       >
         <Icon className="h-4 w-4" />
-        Buy on Fourthwall — {formatPrice(download.price_cents)}
+        {'Buy — ' + formatPrice(download.price_cents)}
       </a>
-      <p className="text-sm text-charcoal/50">You will receive a download link by email after purchase.</p>
+      <p className="text-sm text-charcoal/50">
+        You will receive a download link by email after purchase.
+      </p>
     </div>
   );
 }

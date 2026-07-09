@@ -17,12 +17,10 @@ export default function CartPage() {
   const [checkingOut, setCheckingOut] = useState(false);
 
   async function handleCheckout() {
-    // Only merch items can go through Fourthwall checkout.
-    // Download items go through their own delivery flow.
-    const merchItems = items.filter((i) => i.type === 'merch');
+    const merchItems = items.filter((i) => i.type === 'merch' && i.fourthwall_id);
 
     if (merchItems.length === 0) {
-      toast.error('No purchasable items in cart. Visit each download page to buy individually.');
+      toast.error('No purchasable items in cart.');
       return;
     }
 
@@ -33,13 +31,13 @@ export default function CartPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           items: merchItems.map((item) => ({
-            fourthwall_id: item.id,
+            fourthwall_id: item.fourthwall_id,
             quantity: item.quantity,
           })),
         }),
       });
 
-      const data = (await res.json()) as { checkoutUrl?: string; error?: string };
+      const data = await res.json();
 
       if (!res.ok || !data.checkoutUrl) {
         toast.error(data.error ?? 'Could not start checkout');
@@ -62,9 +60,7 @@ export default function CartPage() {
           <EmptyState message="Your cart is empty." />
         </div>
         <div className="mt-4 text-center">
-          <Link href="/shop" className="btn-primary">
-            Continue Shopping
-          </Link>
+          <Link href="/shop" className="btn-primary">Continue Shopping</Link>
         </div>
       </div>
     );
@@ -89,9 +85,6 @@ export default function CartPage() {
             <div className="flex-1">
               <p className="font-serif text-brown">{item.title}</p>
               <PriceTag cents={item.price_cents} />
-              {item.type === 'download' && (
-                <p className="mt-1 text-xs text-charcoal/50">Visit the download page to purchase</p>
-              )}
             </div>
             {item.type === 'merch' && (
               <input

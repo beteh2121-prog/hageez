@@ -146,8 +146,11 @@ export interface DownloadPurchase {
   created_at: string;
 }
 
+// fourthwall_id stored here so cart checkout can send the correct
+// Fourthwall product ID, not our internal Supabase UUID.
 export interface CartItem {
   id: string;
+  fourthwall_id?: string;
   title: string;
   price_cents: number;
   quantity: number;

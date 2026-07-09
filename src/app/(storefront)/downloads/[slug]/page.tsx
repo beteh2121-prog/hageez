@@ -16,12 +16,16 @@ const FOURTHWALL_STORE_URL = process.env.FOURTHWALL_STORE_URL ?? '';
 export async function generateStaticParams() {
   const supabase = createStaticClient();
   const { data } = await supabase.from('downloads').select('slug');
-  return (data ?? []).map((d) => ({ slug: d.slug }));
+  return (data ?? []).map((d: { slug: string }) => ({ slug: d.slug }));
 }
 
 async function getDownload(slug: string): Promise<Download | null> {
   const supabase = await createClient();
-  const { data } = await supabase.from('downloads').select('*').eq('slug', slug).single();
+  const { data } = await supabase
+    .from('downloads')
+    .select('*')
+    .eq('slug', slug)
+    .single();
   return data as Download | null;
 }
 
@@ -47,11 +51,18 @@ export default async function DownloadPage({ params }: { params: { slug: string 
       <SchemaScript schema={buildDigitalDocumentSchema(download)} />
 
       <h1 className="font-serif text-3xl text-brown">{download.title}</h1>
-      {download.description && <p className="mt-4 text-charcoal/70">{download.description}</p>}
+
+      {download.description && (
+        <p className="mt-4 text-charcoal/70">{download.description}</p>
+      )}
 
       {download.preview_url && (
         <div className="mt-6 overflow-hidden rounded-brand-md border border-gold/20">
-          <iframe src={download.preview_url} title={`Preview of ${download.title}`} className="h-96 w-full" />
+          <iframe
+            src={download.preview_url}
+            title={'Preview of ' + download.title}
+            className="h-96 w-full"
+          />
         </div>
       )}
 
