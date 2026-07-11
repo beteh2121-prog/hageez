@@ -33,13 +33,13 @@ h1, h2, h3, h4 {
 
 .gold-divider {
   height: 1px;
-  background-color: rgba(201, 146, 42, 0.35);
-  margin: 1.5rem 0;
+  background-color: rgba(201,146,42,0.25);
+  margin: 0;
 }
 
 .btn-primary {
   background-color: var(--gold);
-  color: var(--brown);
+  color: var(--brown-dark);
   padding: 0.625rem 1.5rem;
   border-radius: 2px;
   transition: background-color 200ms ease;
@@ -47,11 +47,9 @@ h1, h2, h3, h4 {
   align-items: center;
   justify-content: center;
   font-weight: 500;
+  font-size: 0.875rem;
 }
-
-.btn-primary:hover {
-  background-color: var(--gold-dark);
-}
+.btn-primary:hover { background-color: var(--gold-dark); }
 
 .btn-secondary {
   background-color: transparent;
@@ -64,9 +62,67 @@ h1, h2, h3, h4 {
   align-items: center;
   justify-content: center;
   font-weight: 500;
+  font-size: 0.875rem;
+}
+.btn-secondary:hover { background-color: var(--gold); color: var(--brown-dark); }
+
+.btn-dark {
+  background-color: var(--brown);
+  color: var(--cream);
+  padding: 0.625rem 1.5rem;
+  border-radius: 2px;
+  transition: background-color 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.btn-dark:hover { background-color: var(--gold); color: var(--brown-dark); }
+
+/* Page header used across all inner pages */
+.page-header {
+  background: var(--brown-dark);
+  padding: 3rem 2rem 2.5rem;
 }
 
-.btn-secondary:hover {
-  background-color: var(--gold);
-  color: var(--brown);
+/* Filter pill bar */
+.filter-bar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 1.25rem 2rem;
+  background: white;
+  border-bottom: 1px solid rgba(201,146,42,0.15);
 }
+.filter-pill {
+  font-size: 0.8125rem;
+  padding: 0.375rem 1rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(61,31,13,0.15);
+  background: transparent;
+  color: rgba(28,20,16,0.6);
+  cursor: pointer;
+  transition: all 150ms;
+}
+.filter-pill.active {
+  background: var(--brown);
+  color: var(--cream);
+  border-color: var(--brown);
+}
+.filter-pill:hover:not(.active) { border-color: var(--gold); color: var(--gold); }
+
+/* Free badge */
+.badge-free {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #3B6D11;
+  background: #EAF3DE;
+  padding: 0.2rem 0.625rem;
+  border-radius: 9999px;
+}
+
+/* Gold price text */
+.price-text { color: var(--gold); font-weight: 500; }

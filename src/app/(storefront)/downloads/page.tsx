@@ -3,35 +3,32 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { FileText, BookOpen, Music, Video, ExternalLink } from 'lucide-react';
 import { createStaticClient } from '@/lib/supabase/static';
-import PriceTag from '@/components/shared/PriceTag';
-import EmptyState from '@/components/shared/EmptyState';
+import { formatPrice } from '@/lib/utils/formatPrice';
 import type { Download } from '@/types';
 
 export const revalidate = 1800;
-
 export const metadata: Metadata = {
   title: 'Downloads',
-  description: 'Digital downloads — PDFs, ebooks, audio, and more.',
+  description: 'Free and paid digital resources — prayers, guides, liturgical texts.',
 };
 
-const FILE_ICONS = {
+const FILTERS = ['All', 'Free', 'Prayers', 'Calendar', 'Liturgy', 'Guides'];
+
+const FILE_ICON_MAP = {
   pdf: FileText,
   epub: BookOpen,
   mp3: Music,
   video: Video,
 };
 
-const SOURCE_LABELS: Record<string, string> = {
-  fourthwall: 'Fourthwall',
-  gumroad: 'Gumroad',
-  manual: '',
-};
+const ICON_EMOJIS = ['🙏','📅','🎵','📖','✝️','📜','🌿','🕊️'];
 
 async function getDownloads(): Promise<Download[]> {
   const supabase = createStaticClient();
   const { data } = await supabase
     .from('downloads')
     .select('*')
+    .order('price_cents', { ascending: true })
     .order('created_at', { ascending: false });
   return (data ?? []) as Download[];
 }
@@ -40,70 +37,103 @@ export default async function DownloadsPage() {
   const downloads = await getDownloads();
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-12">
-      <h1 className="font-serif text-3xl text-brown sm:text-4xl">Downloads</h1>
-      <p className="mt-2 text-charcoal/60">{downloads.length} digital item(s)</p>
+    <div>
+      <div className="page-header">
+        <div className="mx-auto max-w-7xl">
+          <h1 className="font-serif text-4xl font-medium text-cream">Downloads</h1>
+          <p className="mt-2 text-cream/50">Free and paid digital resources — prayers, guides, liturgical texts</p>
+        </div>
+      </div>
 
-      {downloads.length === 0 ? (
-        <EmptyState message="No downloads available yet." />
-      ) : (
-        <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {downloads.map((download) => {
-            const Icon = download.file_type ? FILE_ICONS[download.file_type] : FileText;
-            const sourceLabel = SOURCE_LABELS[download.source] ?? '';
+      <div className="filter-bar">
+        {FILTERS.map((f) => (
+          <button key={f} className={`filter-pill ${f === 'All' ? 'active' : ''}`}>{f}</button>
+        ))}
+      </div>
 
-            return (
-              <Link
-                key={download.id}
-                href={`/downloads/${download.slug}`}
-                className="group flex flex-col overflow-hidden rounded-brand-md border border-gold/10 bg-white shadow-gold-sm transition-shadow hover:shadow-gold-md"
-              >
-                {/* Cover image or icon placeholder */}
-                <div className="relative aspect-[4/3] overflow-hidden bg-cream-dark">
-                  {download.cover_path ? (
-                    <Image
-                      src={download.cover_path}
-                      alt={download.title}
-                      fill
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                      className="object-cover transition-transform duration-300 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <Icon className="h-16 w-16 text-gold/30" />
-                    </div>
-                  )}
-
-                  {/* Source badge */}
-                  {sourceLabel && (
-                    <span className="absolute right-2 top-2 rounded-full bg-gold/90 px-2 py-0.5 text-[10px] font-medium text-brown">
-                      {sourceLabel}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-1 flex-col gap-2 p-4">
-                  <div className="flex items-start gap-2">
-                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
-                    <h3 className="font-serif text-base leading-snug text-brown">{download.title}</h3>
-                  </div>
-
-                  {download.description && (
-                    <p className="line-clamp-2 text-sm text-charcoal/60">{download.description}</p>
-                  )}
-
-                  <div className="mt-auto flex items-center justify-between pt-2">
-                    <PriceTag cents={download.price_cents} />
-                    {download.source !== 'manual' && (
-                      <ExternalLink className="h-3.5 w-3.5 text-charcoal/30" />
+      <div className="mx-auto max-w-4xl px-6 py-12">
+        {downloads.length > 0 ? (
+          <div className="flex flex-col gap-4">
+            {downloads.map((dl, i) => {
+              const Icon = dl.file_type ? FILE_ICON_MAP[dl.file_type] : FileText;
+              return (
+                <Link
+                  key={dl.id}
+                  href={`/downloads/${dl.slug}`}
+                  className="group flex gap-5 rounded-[8px] border border-gold/10 bg-white p-5 hover:border-gold/30 transition-colors"
+                >
+                  <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl shadow-gold-sm">
+                    {dl.cover_path ? (
+                      <Image src={dl.cover_path} alt={dl.title} width={56} height={56} className="h-full w-full rounded-[8px] object-cover" />
+                    ) : (
+                      ICON_EMOJIS[i % ICON_EMOJIS.length]
                     )}
                   </div>
+                  <div className="flex flex-1 flex-col">
+                    <h3 className="font-serif text-base font-medium text-brown group-hover:text-gold transition-colors">
+                      {dl.title}
+                    </h3>
+                    {dl.description && (
+                      <p className="mt-1 text-sm leading-relaxed text-charcoal/55 line-clamp-2">
+                        {dl.description}
+                      </p>
+                    )}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {dl.file_type && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-cream-dark px-2.5 py-0.5 text-[11px] text-charcoal/60 uppercase tracking-wide">
+                          <Icon className="h-3 w-3" />
+                          {dl.file_type}
+                        </span>
+                      )}
+                      {dl.source === 'gumroad' && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gold/10 px-2.5 py-0.5 text-[11px] text-gold-dark uppercase tracking-wide">
+                          Gumroad
+                        </span>
+                      )}
+                      {dl.price_cents === 0
+                        ? <span className="badge-free">Free</span>
+                        : <span className="price-text text-sm">{formatPrice(dl.price_cents)}</span>
+                      }
+                    </div>
+                  </div>
+                  {dl.source === 'gumroad' && (
+                    <ExternalLink className="h-4 w-4 flex-shrink-0 self-center text-charcoal/25" />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {[
+              { emoji:'🙏', name:'Daily Prayer Guide', desc:"Morning and evening prayers for the faithful. Includes full Ge'ez text with Amharic and English transliteration.", tags:['PDF','Prayers'], free:true },
+              { emoji:'📅', name:'Fasting Calendar 2025', desc:'Complete Ethiopian Orthodox fasting schedule with explanations of each fast\'s significance.', tags:['PDF','Calendar'], free:true },
+              { emoji:'🎵', name:'Mezmur Collection Vol. 1', desc:'24 traditional Ethiopian Orthodox hymns with sheet music, notation, and historical notes.', tags:['PDF','Liturgy'], free:false, price:'$9.99' },
+              { emoji:'📖', name:"Ge'ez Alphabet Workbook", desc:"Learn the Ethiopic script from scratch. 40 pages with exercises, pronunciation guide, and vocabulary.", tags:['PDF'], free:true },
+              { emoji:'✝️', name:'Timkat Ceremony Guide', desc:'Everything you need to know about the Ethiopian Epiphany celebration — history, prayers, and traditions.', tags:['PDF','Holidays'], free:false, price:'$4.99' },
+            ].map((item) => (
+              <div key={item.name} className="flex gap-5 rounded-[8px] border border-gold/10 bg-white p-5">
+                <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl shadow-gold-sm">
+                  {item.emoji}
                 </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
+                <div className="flex-1">
+                  <h3 className="font-serif text-base font-medium text-brown">{item.name}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-charcoal/55">{item.desc}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {item.tags.map((tag) => (
+                      <span key={tag} className="inline-flex rounded-full bg-cream-dark px-2.5 py-0.5 text-[11px] text-charcoal/60 uppercase tracking-wide">{tag}</span>
+                    ))}
+                    {item.free
+                      ? <span className="badge-free">Free</span>
+                      : <span className="price-text text-sm">{item.price}</span>
+                    }
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
