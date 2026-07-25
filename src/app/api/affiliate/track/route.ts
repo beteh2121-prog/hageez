@@ -1,15 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
+import { createServiceClient } from '@/lib/supabase/service';
 import { AffiliateClickSchema } from '@/lib/validations/affiliate';
-
-function getServiceClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
-}
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 10;
@@ -52,7 +44,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
-  const serviceClient = getServiceClient();
+  const serviceClient = createServiceClient();
 
   const { count } = await serviceClient
     .from('affiliate_clicks')

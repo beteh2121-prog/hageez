@@ -1,15 +1,22 @@
 import { NextResponse } from 'next/server';
-import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { createServiceClient } from '@/lib/supabase/service';
 import { getSignedUrl } from '@/lib/supabase/storage';
 import { deliverDownloadEmail } from '@/lib/email/deliverDownload';
 import { slugify } from '@/lib/utils/slugify';
 
-function getServiceClient(): SupabaseClient {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+// Converts a raw HMAC signature to base64 using only Web APIs (btoa),
+// not Buffer — Buffer is Node.js-specific and, while Cloudflare's
+// nodejs_compat flag polyfills it, avoiding it entirely removes any
+// dependency on that polyfill for something this small. Works
+// identically on Cloudflare Workers, Vercel, and any other host.
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i] ?? 0);
+  }
+  return btoa(binary);
 }
 
 // Best-effort, per-instance rate limit. It resets on cold start, which is
@@ -52,7 +59,7 @@ async function verifySignature(rawBody: string, signature: string | null): Promi
     ['sign']
   );
   const signatureBuffer = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(rawBody));
-  const computedBase64 = Buffer.from(signatureBuffer).toString('base64');
+  const computedBase64 = arrayBufferToBase64(signatureBuffer);
 
   return timingSafeEqual(computedBase64, signature);
 }
@@ -155,7 +162,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const supabase = getServiceClient();
+  const supabase = createServiceClient();
 
   const { data: logRow, error: logInsertError } = await supabase
     .from('webhook_logs')
