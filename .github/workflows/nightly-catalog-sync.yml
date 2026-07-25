@@ -1,0 +1,25 @@
+name: Nightly catalog sync
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger catalog sync
+        run: |
+          response=$(curl -s -w "\n%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -d '{"sources": ["fourthwall", "gumroad"]}' \
+            "${{ secrets.NEXT_PUBLIC_SITE_URL }}/api/admin/sync")
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          echo "Response: $body"
+          if [ "$http_code" -ge 400 ]; then
+            echo "Sync failed with status $http_code"
+            exit 1
+          fi
