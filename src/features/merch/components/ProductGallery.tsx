@@ -19,12 +19,16 @@ export default function ProductGallery({ images, title }: { images: GalleryImage
     );
   }
 
+  const primaryImage = images[selected] ?? images[0];
+  const primaryUrl = primaryImage?.url ?? images[0]?.url ?? '';
+  const primaryAlt = primaryImage?.alt ?? title;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="relative aspect-square overflow-hidden rounded-[8px] bg-cream-dark">
         <Image
-          src={images[selected]?.url ?? images[0].url}
-          alt={images[selected]?.alt ?? title}
+          src={primaryUrl}
+          alt={primaryAlt}
           fill
           className="object-cover"
           sizes="(max-width: 768px) 100vw, 50vw"
