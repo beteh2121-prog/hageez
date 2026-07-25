@@ -74,6 +74,39 @@ github.dev) and Vercel runs `npm install` + `npm run build` on every push.
     it's appended to *all* product forms (merch, downloads, *and* books).
     Added it for consistency so one generic `SeoEditor<T>` component works
     across all three forms.
+12. **Auto-create `profiles` row via a database trigger** —
+    `supabase/sql/profile_trigger.sql`. The original migration had no
+    trigger on `auth.users`, so an admin account created via Supabase
+    Dashboard → Invite User (the normal way) never got a `profiles` row,
+    and `UPDATE profiles SET role='admin'` silently affected 0 rows.
+    `useSignUp()` was also updated to pass `full_name` through the
+    `signUp()` call's metadata instead of a separate insert, since the
+    trigger now creates that row itself.
+13. **Fixed a real build-breaking bug**: `generateStaticParams` in
+    `shop/[id]/page.tsx`, `downloads/[slug]/page.tsx`, and
+    `books/[asin]/page.tsx` used the cookie-aware Supabase client
+    (`@/lib/supabase/server`). `generateStaticParams` runs at build time,
+    before any request exists, so calling `cookies()` there throws
+    `` `cookies` was called outside a request scope `` — this is exactly
+    what broke the first real Vercel deploy. Fixed by adding
+    `src/lib/supabase/static.ts`, a plain anon-key client (safe here since
+    every query it runs is already public-readable per RLS), and using it
+    only inside those three `generateStaticParams` functions. The rest of
+    each page still uses the cookie-aware client, which is fine since
+    Next.js provides an empty cookie jar during static rendering rather
+    than throwing.
+
+    **Why this wasn't caught earlier:** this sandbox's network is
+    restricted to package registries — it cannot reach Google Fonts *or*
+    Sanity/Supabase's real APIs. Every `next build` run in this sandbox
+    failed before ever reaching the "Collecting page data" stage where
+    this bug lived, which created a false sense that "the build works
+    except for fonts." It took a real Vercel deploy to surface it. After
+    finding it, the fix was verified by temporarily stripping the font
+    loader and stubbing the Sanity call (verification-only changes,
+    reverted immediately after) to get a sandboxed build past that wall —
+    confirmed `next build` exits 0 with all three previously-broken routes
+    now showing `●` (successfully prerendered).
 
 ## Known security tradeoff: staying on Next.js 14
 
@@ -181,3 +214,153 @@ file to manage locally since there's no local dev server in this workflow.
 The full SQL migration (8 tables, views, RLS policies, triggers) from the
 blueprint is run once, as-is, in **Supabase Dashboard → SQL Editor**. No
 changes needed there — that step was already 100% browser-based.
+
+---
+
+## Cloudflare Workers Migration (replacing Vercel)
+
+Vercel's Hobby plan explicitly prohibits commercial use per their own Terms
+of Service — this site sells physical/digital products, so it needed to
+move off Vercel's free tier. Cloudflare Workers' free tier explicitly
+permits commercial use, so that's the new target.
+
+### What actually changed
+
+- **Deployment target: Cloudflare Workers, not "Cloudflare Pages."**
+  Cloudflare's own current guidance steers full-stack Next.js apps to
+  Workers via the OpenNext adapter — Pages (as a distinct product) doesn't
+  fully support Next.js middleware and other features this app uses.
+- **`@opennextjs/cloudflare` is pinned to `1.15.0`**, not the latest
+  version. This is the *last* version that supports Next.js 14 — every
+  version from `1.16.0` onward dropped Next 14 support entirely. This is a
+  frozen dependency: it will not receive further updates while the
+  project stays on Next 14. Combined with the earlier note about
+  Next 14's own unpatched 2026 CVEs, this is a second, independent reason
+  to consider the Next.js 15 migration as a dedicated future task — not
+  bundled into this one.
+- **`vercel.json` removed.** Its cron config doesn't apply to Cloudflare.
+- **`src/app/api/cron/sync-catalog/route.ts` removed.** It existed purely
+  to adapt Vercel Cron's HTTP-GET-with-bearer-token convention to call
+  `/api/admin/sync`. Cloudflare Cron Triggers work completely differently
+  (they invoke a `scheduled()` handler inside the Worker, not an HTTP
+  path), and bridging that correctly with OpenNext isn't something
+  verifiable without a live deployment — getting it subtly wrong would
+  mean the nightly sync silently stops firing with no error surfaced
+  anywhere. Instead, `.github/workflows/nightly-catalog-sync.yml` calls
+  `/api/admin/sync` directly on a schedule via GitHub Actions — the exact
+  same HTTP call Vercel Cron was making, on infrastructure already proven
+  to work in this repo (the existing weekly affiliate-check workflow uses
+  the same `on: schedule:` pattern).
+- **`open-next.config.ts`, `wrangler.jsonc` added.** Minimal, standard
+  OpenNext/Wrangler config. `nodejs_compat` flag enabled so
+  `@supabase/supabase-js` and other Node-touching dependencies work
+  without modification.
+- **`images.unoptimized: true` added to `next.config.mjs`.** Cloudflare's
+  OpenNext adapter needs either a paid Cloudflare Images binding or
+  unoptimized mode for `next/image`. Unoptimized mode was chosen
+  specifically because it's zero-cost and zero-additional-setup: images
+  render as plain `<img>` tags pointing at the original URL. Nothing can
+  silently break this way — the tradeoff is losing Next's automatic
+  resizing/format conversion, which Fourthwall/Gumroad/Supabase/Sanity
+  already partially handle CDN-side regardless.
+- **One Node.js-specific API removed**: `Buffer.from(...).toString('base64')`
+  in the Fourthwall webhook's signature verification was replaced with a
+  small `arrayBufferToBase64()` helper built from `btoa` + `Uint8Array` —
+  pure Web APIs, universally supported on Cloudflare Workers, Node, and
+  browsers alike. This was the *only* Node-specific API found anywhere in
+  the codebase after a full search for `Buffer`, `fs`/`path`/`os` module
+  imports, `require()`, `__dirname`, and `process.cwd()`.
+- **`.github/workflows/deploy-cloudflare.yml` added.** Replaces "click
+  Deploy in the Vercel dashboard": every push to `main` now runs
+  `npm run cf:build` then `cloudflare/wrangler-action@v3` to deploy —
+  fully automatic, runs on GitHub's servers, no terminal needed on your
+  own machine, matching the original no-terminal workflow constraint.
+
+### Real, honest cost note
+
+The compiled Worker bundle is well over the Cloudflare Workers **free**
+tier's 3MB script-size cap — verified directly: the embedded Sanity
+Studio route alone bundles to ~3.9MB before Next.js's own runtime and
+other routes are even added. **This means the Workers Paid plan
+($5/month flat, not per-seat) is required**, not the free tier. This was
+flagged as a likely outcome before starting the migration, and confirmed
+by actually running the build rather than assumed. $5/month is still
+significantly cheaper than Vercel Pro ($20/month), and it's the honest
+number rather than an oversold "$0" migration.
+
+### Verification performed
+
+- `npm run cf:build` (`opennextjs-cloudflare build`) completes with exit
+  code 0, producing a real `.open-next/worker.js` and all 30 routes
+  (8 API routes, all admin pages, all dynamic `[id]`/`[slug]`/`[asin]`
+  routes) building successfully.
+- Same sandbox limitation as every previous phase applies to this
+  verification too: this sandbox cannot reach Google Fonts or Sanity's
+  real API, so the font loader and one Sanity call were temporarily
+  stubbed *only* to get a build past that specific network wall, then
+  immediately reverted. The rest of the build — TypeScript, ESLint,
+  Vitest, and the actual OpenNext bundling step — ran against the real,
+  unmodified code.
+
+### Environment variables — new manual setup required
+
+Runtime secrets (`SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, etc.) must
+be set in **two** places now, not one:
+1. **GitHub Actions secrets** (Settings → Secrets and variables → Actions)
+   — used during the build step, since `NEXT_PUBLIC_*` vars are inlined
+   into the JS bundle at build time.
+2. **Cloudflare dashboard** (Workers & Pages → your Worker → Settings →
+   Variables) — used by the deployed Worker at runtime, since API routes
+   read `process.env.X` when a real request comes in, after the build
+   has already finished.
+
+Also new: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as GitHub
+secrets — these authenticate the `wrangler-action` deploy step and have
+no Vercel equivalent.
+
+---
+
+## Site-Wide CMS (editable hero, footer, custom pages)
+
+Added a `site_settings` key-value table and `site_pages` table so the
+non-technical parts of the site — hero text, stats bar, testimonial,
+footer links/tagline, and entire custom pages — are editable from
+`/admin/site-settings` and `/admin/pages` without touching code.
+
+### What's editable now
+- **General**: site name, description, logo text/icon
+- **Hero section**: tagline, title, subtitle, both button texts/links
+- **Stats bar**: add/remove/edit any number of stat tiles
+- **Testimonial**: quote + attribution
+- **Footer**: tagline, social links, support email
+- **Custom pages**: add/edit/delete pages with HTML content, toggle
+  published/draft, toggle whether they appear in the nav menu, control
+  sort order — all from `/admin/pages`
+
+### Required setup
+Run `supabase/sql/site_settings.sql` once in Supabase → SQL Editor. It
+creates both tables with RLS (public read, admin-only write) and seeds
+sensible defaults matching the current live site, so nothing changes
+visually until you actually edit something in `/admin/site-settings`.
+
+### Verification note (read before assuming this is fully proven)
+TypeScript (0 errors), ESLint (0 errors), and Vitest (22/22) all passed
+cleanly against this addition. The full `next build` could not be
+completed end-to-end in this sandbox for this specific change — not
+because of a code defect, but because the new `(storefront)/layout.tsx`
+now calls Supabase (for settings + custom pages) on every single
+storefront page, and this sandbox's network is restricted to a small
+allowlist that has never included `supabase.co` (the same restriction
+that blocked Google Fonts and Sanity's API in every earlier phase).
+Diagnosed directly: a raw `fetch()` against an unreachable host fails in
+165ms here, but going through `@supabase/supabase-js` takes ~7 seconds
+per call in this environment — confirmed against both a fake URL and the
+real project URL, ruling out a URL-specific issue. With ~20 static pages
+each making 2 settings-related calls through the layout, that multiplies
+into minutes, which is what caused the build to time out here. This
+should not happen in real deployment, where Supabase is actually
+reachable and responds in milliseconds rather than being blocked — but
+unlike every other phase, this one could not be directly confirmed by a
+completed build in this sandbox. Treat the first real Cloudflare/GitHub
+Actions deploy after this change as the actual first test, and report
+back what it shows.
