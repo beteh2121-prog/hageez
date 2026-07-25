@@ -28,26 +28,30 @@ export default function VariantSelector({
   variants,
 }: VariantSelectorProps) {
   const addItem = useCartStore((state) => state.addItem);
-  const [selectedVariant, setSelectedVariant] = useState<Variant>(variants[0] ?? null);
+
+  const firstVariant = variants[0];
+  const [selectedVariant, setSelectedVariant] = useState<Variant | undefined>(firstVariant);
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
 
-  // Group attribute options (e.g. Color, Size)
   const attributeGroups: Record<string, string[]> = {};
-  const [selectedAttrs, setSelectedAttrs] = useState<Record<string, string>>(() => {
-    const defaults: Record<string, string> = {};
-    variants[0]?.attributes?.forEach((a) => { defaults[a.name] = a.value; });
-    return defaults;
-  });
-
   variants.forEach((v) => {
     v.attributes?.forEach((attr) => {
       if (!attributeGroups[attr.name]) attributeGroups[attr.name] = [];
-      if (!attributeGroups[attr.name].includes(attr.value)) {
-        attributeGroups[attr.name].push(attr.value);
+      const existing = attributeGroups[attr.name];
+      if (existing && !existing.includes(attr.value)) {
+        existing.push(attr.value);
       }
     });
+  });
+
+  const [selectedAttrs, setSelectedAttrs] = useState<Record<string, string>>(() => {
+    const defaults: Record<string, string> = {};
+    firstVariant?.attributes?.forEach((a) => {
+      defaults[a.name] = a.value;
+    });
+    return defaults;
   });
 
   function selectAttribute(name: string, value: string) {
@@ -64,7 +68,9 @@ export default function VariantSelector({
     addItem({
       id: productDbId,
       fourthwall_id: productId,
-      title: productTitle + (selectedVariant.name !== 'Default' ? ` — ${selectedVariant.name}` : ''),
+      title:
+        productTitle +
+        (selectedVariant.name !== 'Default' ? ` — ${selectedVariant.name}` : ''),
       price_cents: Math.round(selectedVariant.unitPrice.value * 100),
       quantity,
       image: productImage,
@@ -86,7 +92,7 @@ export default function VariantSelector({
           items: [{ fourthwall_id: productId, quantity }],
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as { checkoutUrl?: string; error?: string };
       if (!res.ok || !data.checkoutUrl) {
         toast.error(data.error ?? 'Could not start checkout');
         return;
@@ -105,12 +111,10 @@ export default function VariantSelector({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Price */}
       {price && (
-        <p className="font-serif text-3xl text-gold font-medium">{price}</p>
+        <p className="font-serif text-3xl font-medium text-gold">{price}</p>
       )}
 
-      {/* Variant attributes (Color, Size, etc.) */}
       {Object.entries(attributeGroups).map(([attrName, values]) => (
         <div key={attrName}>
           <p className="mb-2 text-sm font-medium text-charcoal/70">
@@ -120,34 +124,25 @@ export default function VariantSelector({
           <div className="flex flex-wrap gap-2">
             {values.map((value) => {
               const isActive = selectedAttrs[attrName] === value;
-              // Color swatches for "Color" attribute
-              if (attrName.toLowerCase() === 'color') {
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => selectAttribute(attrName, value)}
-                    className={`h-8 min-w-[2rem] rounded-full border-2 px-3 text-xs font-medium transition-all ${
-                      isActive
-                        ? 'border-gold bg-gold text-brown-dark'
-                        : 'border-gold/20 bg-cream-dark text-charcoal hover:border-gold/50'
-                    }`}
-                  >
-                    {value}
-                  </button>
-                );
-              }
-              // Size pills
+              const isColor = attrName.toLowerCase() === 'color';
               return (
                 <button
                   key={value}
                   type="button"
                   onClick={() => selectAttribute(attrName, value)}
-                  className={`rounded-[4px] border px-4 py-1.5 text-sm font-medium transition-all ${
-                    isActive
-                      ? 'border-brown bg-brown text-cream'
-                      : 'border-gold/20 bg-white text-charcoal hover:border-gold'
-                  }`}
+                  className={
+                    isColor
+                      ? `h-8 min-w-[2rem] rounded-full border-2 px-3 text-xs font-medium transition-all ${
+                          isActive
+                            ? 'border-gold bg-gold text-brown-dark'
+                            : 'border-gold/20 bg-cream-dark text-charcoal hover:border-gold/50'
+                        }`
+                      : `rounded-[4px] border px-4 py-1.5 text-sm font-medium transition-all ${
+                          isActive
+                            ? 'border-brown bg-brown text-cream'
+                            : 'border-gold/20 bg-white text-charcoal hover:border-gold'
+                        }`
+                  }
                 >
                   {value}
                 </button>
@@ -157,7 +152,6 @@ export default function VariantSelector({
         </div>
       ))}
 
-      {/* Quantity */}
       <div>
         <p className="mb-2 text-sm font-medium text-charcoal/70">Quantity</p>
         <div className="flex items-center gap-3">
@@ -179,12 +173,12 @@ export default function VariantSelector({
         </div>
       </div>
 
-      {/* CTA Buttons */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
           onClick={handleAddToCart}
-          className="btn-secondary inline-flex flex-1 items-center justify-center gap-2"
+          disabled={!selectedVariant}
+          className="btn-secondary inline-flex flex-1 items-center justify-center gap-2 disabled:opacity-50"
         >
           {added ? (
             <><Check className="h-4 w-4" /> Added to Cart</>
@@ -195,7 +189,7 @@ export default function VariantSelector({
         <button
           type="button"
           onClick={handleBuyNow}
-          disabled={checkingOut}
+          disabled={checkingOut || !selectedVariant}
           className="btn-primary inline-flex flex-1 items-center justify-center gap-2 disabled:opacity-60"
         >
           {checkingOut ? (
@@ -205,7 +199,8 @@ export default function VariantSelector({
           )}
         </button>
       </div>
-      <p className="text-xs text-charcoal/40 text-center">
+
+      <p className="text-center text-xs text-charcoal/40">
         Secure checkout powered by Fourthwall
       </p>
     </div>
