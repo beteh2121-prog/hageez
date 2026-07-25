@@ -2,10 +2,18 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, BookOpen, Download, Package } from 'lucide-react';
 import { createStaticClient } from '@/lib/supabase/static';
+import { getAllSettings } from '@/lib/supabase/settings';
 import NewsletterForm from '@/components/shared/NewsletterForm';
 import type { Merch, KdpBook, Download as DownloadType } from '@/types';
 
-export const revalidate = 3600;
+export const revalidate = 300;
+
+const COVER_GRADIENTS = [
+  'from-brown to-brown-light',
+  'from-brown-dark to-brown',
+  'from-brown-light to-gold-dark',
+  'from-[#0F2B1E] to-[#1D5E3A]',
+];
 
 async function getHomeData() {
   const supabase = createStaticClient();
@@ -21,57 +29,59 @@ async function getHomeData() {
   };
 }
 
-const COVER_GRADIENTS = [
-  'from-brown to-brown-light',
-  'from-brown-dark to-brown',
-  'from-brown-light to-gold-dark',
-  'from-[#0F2B1E] to-[#1D5E3A]',
-];
-
 export default async function HomePage() {
-  const { merch, books, freeDownloads } = await getHomeData();
+  const [{ merch, books, freeDownloads }, settings] = await Promise.all([
+    getHomeData(),
+    getAllSettings(),
+  ]);
+
+  const { hero, stats, testimonial } = settings;
+  const titleParts = hero.title.split('Faith');
 
   return (
     <div className="flex flex-col">
 
-      {/* ── HERO ───────────────────────────────────────────────── */}
+      {/* HERO */}
       <section className="relative overflow-hidden bg-brown-dark px-6 py-20 md:py-28">
         <div className="pointer-events-none absolute -right-16 top-1/2 -translate-y-1/2 select-none font-serif text-[320px] leading-none text-gold/[0.05]">
           ✝
         </div>
         <div className="relative mx-auto max-w-7xl">
           <span className="mb-5 inline-block rounded-[2px] border border-gold/30 px-3 py-1 text-[11px] uppercase tracking-[2px] text-gold">
-            Ethiopian Orthodox Tewahedo
+            {hero.tagline}
           </span>
           <h1 className="max-w-2xl font-serif text-4xl font-medium leading-[1.15] text-cream sm:text-5xl lg:text-6xl">
-            Rooted in <span className="text-gold">Faith</span>, Crafted with Purpose
+            {titleParts.length > 1 ? (
+              <>
+                {titleParts[0]}
+                <span className="text-gold">Faith</span>
+                {titleParts[1]}
+              </>
+            ) : (
+              hero.title
+            )}
           </h1>
           <p className="mt-5 max-w-xl text-base leading-relaxed text-cream/60">
-            A curated marketplace of books, ebooks, merch, and spiritual resources — dedicated to Ethiopian Orthodox Tewahedo literature, theology, and culture.
+            {hero.subtitle}
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
-            <Link href="/books" className="btn-primary gap-2 px-7 py-3 text-base">
-              Browse Books <ArrowRight className="h-4 w-4" />
+            <Link href={hero.cta_primary_href} className="btn-primary gap-2 px-7 py-3 text-base">
+              {hero.cta_primary_text} <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/downloads"
+              href={hero.cta_secondary_href}
               className="inline-flex items-center justify-center gap-2 rounded-[2px] border border-white/25 px-7 py-3 text-base text-cream transition-colors hover:border-white/50"
             >
-              Free Downloads
+              {hero.cta_secondary_text}
             </Link>
           </div>
         </div>
       </section>
 
-      {/* ── STATS ──────────────────────────────────────────────── */}
+      {/* STATS */}
       <div className="bg-gold">
         <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-brown/20 md:grid-cols-4">
-          {[
-            { num: '240+', label: 'Books & Ebooks' },
-            { num: '18', label: 'Free Downloads' },
-            { num: '4.9★', label: 'Avg. Rating' },
-            { num: '12k+', label: 'Readers' },
-          ].map((stat) => (
+          {stats.map((stat) => (
             <div key={stat.label} className="py-5 text-center">
               <div className="font-serif text-2xl font-medium text-brown-dark">{stat.num}</div>
               <div className="mt-0.5 text-xs text-brown/70">{stat.label}</div>
@@ -80,7 +90,7 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {/* ── FEATURED BOOKS ─────────────────────────────────────── */}
+      {/* FEATURED BOOKS */}
       <section className="mx-auto w-full max-w-7xl px-6 py-16">
         <div className="mb-8 flex items-end justify-between">
           <div>
@@ -91,20 +101,15 @@ export default async function HomePage() {
             View all <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-
         <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
           {books.length > 0
             ? books.map((book, i) => (
                 <Link key={book.id} href={`/books/${book.asin}`} className="group">
                   <div className={`relative aspect-[3/4] overflow-hidden rounded-[6px] bg-gradient-to-br ${COVER_GRADIENTS[i % 4]} shadow-gold-sm transition-shadow group-hover:shadow-gold-md`}>
-                    {book.cover_image_url ? (
-                      <Image src={book.cover_image_url} alt={book.title} fill className="object-cover" sizes="(max-width: 768px) 50vw, 25vw" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-5xl">📖</div>
-                    )}
-                    {i === 0 && (
-                      <span className="absolute right-2 top-2 rounded-[2px] bg-gold px-2 py-0.5 text-[10px] font-medium text-brown-dark">Bestseller</span>
-                    )}
+                    {book.cover_image_url
+                      ? <Image src={book.cover_image_url} alt={book.title} fill className="object-cover" sizes="(max-width:768px) 50vw,25vw" />
+                      : <div className="flex h-full items-center justify-center text-5xl">📖</div>}
+                    {i === 0 && <span className="absolute right-2 top-2 rounded-[2px] bg-gold px-2 py-0.5 text-[10px] font-medium text-brown-dark">Bestseller</span>}
                   </div>
                   <div className="mt-3">
                     <h3 className="font-serif text-sm font-medium leading-snug text-brown line-clamp-2">{book.title}</h3>
@@ -116,12 +121,8 @@ export default async function HomePage() {
             : ['The Fetha Negest', 'Liturgy of St. Yared', 'Kebra Nagast', 'Andemta Commentary'].map((title, i) => (
                 <Link key={title} href="/books" className="group">
                   <div className={`relative aspect-[3/4] overflow-hidden rounded-[6px] bg-gradient-to-br ${COVER_GRADIENTS[i]} shadow-gold-sm`}>
-                    <div className="flex h-full items-center justify-center text-5xl">
-                      {['📖','✝️','🕊️','🌿'][i]}
-                    </div>
-                    {i === 0 && (
-                      <span className="absolute right-2 top-2 rounded-[2px] bg-gold px-2 py-0.5 text-[10px] font-medium text-brown-dark">Bestseller</span>
-                    )}
+                    <div className="flex h-full items-center justify-center text-5xl">{['📖','✝️','🕊️','🌿'][i]}</div>
+                    {i === 0 && <span className="absolute right-2 top-2 rounded-[2px] bg-gold px-2 py-0.5 text-[10px] font-medium text-brown-dark">Bestseller</span>}
                   </div>
                   <div className="mt-3">
                     <h3 className="font-serif text-sm font-medium leading-snug text-brown">{title}</h3>
@@ -135,7 +136,7 @@ export default async function HomePage() {
 
       <div className="gold-divider mx-6" />
 
-      {/* ── FEATURED MERCH ─────────────────────────────────────── */}
+      {/* MERCH */}
       <section className="mx-auto w-full max-w-7xl px-6 py-16">
         <div className="mb-8 flex items-end justify-between">
           <div>
@@ -146,17 +147,14 @@ export default async function HomePage() {
             View all <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
           {merch.length > 0
             ? merch.slice(0, 3).map((product) => (
                 <Link key={product.id} href={`/shop/${product.id}`} className="group overflow-hidden rounded-[8px] border border-gold/10 bg-white shadow-gold-sm hover:shadow-gold-md transition-shadow">
                   <div className="relative aspect-square overflow-hidden bg-cream-dark">
-                    {product.images[0] ? (
-                      <Image src={product.images[0].url} alt={product.images[0].alt} fill className="object-cover transition-transform group-hover:scale-105" sizes="(max-width: 640px) 100vw, 33vw" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-5xl">✝️</div>
-                    )}
+                    {product.images[0]
+                      ? <Image src={product.images[0].url} alt={product.images[0].alt} fill className="object-cover transition-transform group-hover:scale-105" sizes="(max-width:640px) 100vw,33vw" />
+                      : <div className="flex h-full items-center justify-center text-5xl">✝️</div>}
                   </div>
                   <div className="p-4">
                     <h3 className="font-serif text-base font-medium text-brown">{product.title}</h3>
@@ -165,15 +163,9 @@ export default async function HomePage() {
                   </div>
                 </Link>
               ))
-            : [
-                { emoji: '✝️', bg: '#FAF4E8', name: 'Ethiopian Cross Tee', price: '$32.00' },
-                { emoji: '🕍', bg: '#F0E4CC', name: 'Lalibela Art Print', price: '$28.00' },
-                { emoji: '📿', bg: '#1C0D06', name: 'Prayer Beads Mug', price: '$19.00' },
-              ].map((item) => (
+            : [{ emoji:'✝️', bg:'#FAF4E8', name:'Ethiopian Cross Tee', price:'$32.00' }, { emoji:'🕍', bg:'#F0E4CC', name:'Lalibela Art Print', price:'$28.00' }, { emoji:'📿', bg:'#1C0D06', name:'Prayer Beads Mug', price:'$19.00' }].map((item) => (
                 <Link key={item.name} href="/shop" className="group overflow-hidden rounded-[8px] border border-gold/10 bg-white shadow-gold-sm hover:shadow-gold-md transition-shadow">
-                  <div className="flex aspect-square items-center justify-center text-6xl" style={{ background: item.bg }}>
-                    {item.emoji}
-                  </div>
+                  <div className="flex aspect-square items-center justify-center text-6xl" style={{ background: item.bg }}>{item.emoji}</div>
                   <div className="p-4">
                     <h3 className="font-serif text-base font-medium text-brown">{item.name}</h3>
                     <p className="mt-1 text-sm font-medium text-gold">{item.price}</p>
@@ -184,15 +176,15 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── TESTIMONIAL ────────────────────────────────────────── */}
+      {/* TESTIMONIAL */}
       <div className="bg-brown px-6 py-14 text-center">
         <p className="mx-auto max-w-2xl font-serif text-xl italic leading-relaxed text-cream/90 md:text-2xl">
-          &ldquo;This is the most complete collection of Ethiopian Orthodox spiritual resources I have found outside of Ethiopia itself.&rdquo;
+          &ldquo;{testimonial.quote}&rdquo;
         </p>
-        <p className="mt-4 text-sm text-gold">— Reader, Addis Ababa</p>
+        <p className="mt-4 text-sm text-gold">{testimonial.attribution}</p>
       </div>
 
-      {/* ── FREE DOWNLOADS ─────────────────────────────────────── */}
+      {/* FREE DOWNLOADS */}
       <section className="bg-cream-dark/50 px-6 py-16">
         <div className="mx-auto max-w-7xl">
           <div className="mb-8 flex items-end justify-between">
@@ -204,14 +196,11 @@ export default async function HomePage() {
               View all <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
-
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {freeDownloads.length > 0
               ? freeDownloads.map((dl) => (
-                  <Link key={dl.id} href={`/downloads/${dl.slug}`} className="flex gap-4 rounded-[8px] border border-gold/10 bg-white p-5 hover:border-gold/30 transition-colors">
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl">
-                      📄
-                    </div>
+                  <Link key={dl.id} href={`/downloads/${dl.slug}`} className="flex gap-4 rounded-[8px] border border-gold/10 bg-white p-5 transition-colors hover:border-gold/30">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl">📄</div>
                     <div>
                       <h3 className="font-serif text-base font-medium text-brown">{dl.title}</h3>
                       {dl.description && <p className="mt-1 text-sm text-charcoal/55 line-clamp-2">{dl.description}</p>}
@@ -219,14 +208,9 @@ export default async function HomePage() {
                     </div>
                   </Link>
                 ))
-              : [
-                  { name: 'Daily Prayer Guide', desc: "Morning and evening prayers. Includes Ge'ez transliteration." },
-                  { name: 'Fasting Calendar 2025', desc: 'Complete fasting schedule with explanations.' },
-                ].map((item) => (
-                  <Link key={item.name} href="/downloads" className="flex gap-4 rounded-[8px] border border-gold/10 bg-white p-5 hover:border-gold/30 transition-colors">
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl">
-                      📄
-                    </div>
+              : [{ name:'Daily Prayer Guide', desc:"Morning and evening prayers. Includes Ge'ez transliteration." }, { name:'Fasting Calendar 2025', desc:'Complete fasting schedule with explanations.' }].map((item) => (
+                  <Link key={item.name} href="/downloads" className="flex gap-4 rounded-[8px] border border-gold/10 bg-white p-5 transition-colors hover:border-gold/30">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl">📄</div>
                     <div>
                       <h3 className="font-serif text-base font-medium text-brown">{item.name}</h3>
                       <p className="mt-1 text-sm text-charcoal/55">{item.desc}</p>
@@ -238,7 +222,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── VALUE PROPS ────────────────────────────────────────── */}
+      {/* VALUE PROPS */}
       <section className="mx-auto w-full max-w-7xl px-6 py-16">
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
           {[
@@ -255,7 +239,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── NEWSLETTER ─────────────────────────────────────────── */}
+      {/* NEWSLETTER */}
       <div className="bg-cream-dark">
         <div className="mx-auto max-w-xl px-6 py-16 text-center">
           <h2 className="font-serif text-3xl text-brown">Stay Connected</h2>
@@ -265,7 +249,6 @@ export default async function HomePage() {
           <NewsletterForm />
         </div>
       </div>
-
     </div>
   );
 }
