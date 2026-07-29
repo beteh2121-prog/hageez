@@ -54,7 +54,7 @@ export default function AdminSidebar({ email }: { email: string }) {
 
           if (isExternal) {
             return (
-              
+              <a
                 key={item.href}
                 href={item.href}
                 target="_blank"
