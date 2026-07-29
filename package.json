@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "studio:deploy": "sanity deploy --yes"
   },
   "dependencies": {
     "next": "14.2.35",
@@ -31,10 +32,6 @@
     "zustand": "^4.5.4",
     "next-sanity": "^9.4.4",
     "@sanity/image-url": "^1.0.2",
-    "sanity": "^3.55.0",
-    "@sanity/vision": "^3.55.0",
-    "@sanity/icons": "^3.4.0",
-    "styled-components": "^6.1.12",
     "@portabletext/react": "^3.1.0",
     "resend": "^3.5.0",
     "sonner": "^1.5.0",
@@ -51,6 +48,10 @@
     "lite-youtube-embed": "^0.3.3"
   },
   "devDependencies": {
+    "sanity": "^3.55.0",
+    "@sanity/vision": "^3.55.0",
+    "@sanity/icons": "^3.4.0",
+    "styled-components": "^6.1.12",
     "@opennextjs/cloudflare": "1.15.0",
     "wrangler": "^4.59.2",
     "typescript": "^5.5.4",
