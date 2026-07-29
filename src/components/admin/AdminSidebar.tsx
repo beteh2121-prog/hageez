@@ -12,6 +12,8 @@ import {
   Settings,
   LogOut,
   PenSquare,
+  FileText,
+  Palette,
 } from 'lucide-react';
 import { useSignOut } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils/cn';
@@ -23,8 +25,15 @@ const NAV_ITEMS = [
   { href: '/admin/books', label: 'Books', icon: BookOpen },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingBag },
   { href: '/admin/affiliate', label: 'Affiliate', icon: TrendingUp },
-  { href: '/studio', label: 'Blog (Studio)', icon: PenSquare },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
+  {
+    href: process.env.NEXT_PUBLIC_SANITY_STUDIO_URL || 'https://ethiopianorthodoxheritage.sanity.studio',
+    label: 'Blog (Studio)',
+    icon: PenSquare,
+    isExternal: true,
+  },
+  { href: '/admin/pages', label: 'Pages', icon: FileText },
+  { href: '/admin/site-settings', label: 'Site Settings', icon: Palette },
+  { href: '/admin/settings', label: 'Account', icon: Settings },
 ];
 
 export default function AdminSidebar({ email }: { email: string }) {
@@ -39,8 +48,25 @@ export default function AdminSidebar({ email }: { email: string }) {
 
       <nav className="flex flex-col gap-1 px-3">
         {NAV_ITEMS.map((item) => {
-          const isActive = pathname.startsWith(item.href);
+          const isExternal = 'isExternal' in item && item.isExternal;
+          const isActive = !isExternal && pathname.startsWith(item.href);
           const Icon = item.icon;
+
+          if (isExternal) {
+            return (
+              
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-brand border-l-[3px] border-transparent px-3 py-2 text-sm text-cream/60 transition-colors hover:text-cream"
+              >
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </a>
+            );
+          }
+
           return (
             <Link
               key={item.href}
