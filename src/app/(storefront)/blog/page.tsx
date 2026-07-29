@@ -117,7 +117,7 @@ export default async function BlogPage() {
             <p className="font-serif text-lg text-brown">Blog posts coming soon</p>
             <p className="mt-2 text-sm text-charcoal/55">
               Create your first post in{' '}
-               href={process.env.NEXT_PUBLIC_SANITY_STUDIO_URL || 'https://ethiopianorthodoxheritage.sanity.studio'}
+              <a href={process.env.NEXT_PUBLIC_SANITY_STUDIO_URL || 'https://ethiopianorthodoxheritage.sanity.studio'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gold hover:underline"
