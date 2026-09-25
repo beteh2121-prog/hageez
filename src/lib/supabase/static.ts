@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseAnonKey, getSupabaseUrl } from './env';
 
 /**
  * For contexts with no HTTP request at all — generateStaticParams, build
@@ -10,8 +11,5 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
  * already readable by anonymous users under the existing RLS policies.
  */
 export function createStaticClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  return createSupabaseClient(getSupabaseUrl(), getSupabaseAnonKey());
 }

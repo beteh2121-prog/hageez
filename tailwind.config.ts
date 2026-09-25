@@ -14,10 +14,15 @@ const config: Config = {
     extend: {
       colors: {
         gold: {
-          DEFAULT: '#C9922A',
-          light: '#E8B96A',
-          dark: '#8C6318',
-          muted: 'rgba(201,146,42,0.08)',
+          DEFAULT: '#C67D10',
+          light: '#EEA02B',
+          dark: '#975F0C',
+          muted: 'rgba(198,125,16,0.08)',
+        },
+        crimson: {
+          DEFAULT: '#93331F',
+          light: '#BD4128',
+          dark: '#692416',
         },
         brown: {
           DEFAULT: '#3D1F0D',
@@ -33,14 +38,15 @@ const config: Config = {
       fontFamily: {
         serif: ['var(--font-serif)', 'Georgia', 'serif'],
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        ethiopic: ['var(--font-ethiopic)', 'serif'],
       },
       borderRadius: {
         brand: '2px',
         'brand-md': '4px',
       },
       boxShadow: {
-        'gold-sm': '0 1px 3px rgba(201,146,42,0.20)',
-        'gold-md': '0 4px 12px rgba(201,146,42,0.25)',
+        'gold-sm': '0 1px 3px rgba(198,125,16,0.20)',
+        'gold-md': '0 4px 12px rgba(198,125,16,0.25)',
       },
     },
   },

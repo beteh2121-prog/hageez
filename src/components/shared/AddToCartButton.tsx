@@ -21,7 +21,6 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
   function handleAddToCart() {
     addItem({
       id: product.id,
-      fourthwall_id: product.fourthwall_id,
       title: product.title,
       price_cents: product.price_cents,
       quantity: 1,
@@ -29,16 +28,11 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
       type: 'merch',
     });
     setAdded(true);
-    toast.success(product.title + ' added to cart');
+    toast.success(`${product.title} added to cart`);
     setTimeout(() => setAdded(false), 2000);
   }
 
   async function handleBuyNow() {
-    if (!product.fourthwall_id) {
-      toast.error('This product cannot be purchased directly.');
-      return;
-    }
-
     setCheckingOut(true);
     try {
       const res = await fetch('/api/checkout', {
@@ -49,7 +43,7 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
         }),
       });
 
-      const data = await res.json();
+      const data = (await res.json()) as { checkoutUrl?: string; error?: string };
 
       if (!res.ok || !data.checkoutUrl) {
         toast.error(data.error ?? 'Could not start checkout');
@@ -58,7 +52,7 @@ export default function AddToCartButton({ product }: AddToCartButtonProps) {
 
       window.location.href = data.checkoutUrl;
     } catch {
-      toast.error('Could not reach checkout. Please try again.');
+      toast.error('Could not reach checkout');
     } finally {
       setCheckingOut(false);
     }

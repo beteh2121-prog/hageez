@@ -1,19 +1,25 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display } from 'next/font/google';
+import { Inter, Playfair_Display, Noto_Serif_Ethiopic } from 'next/font/google';
 import { Toaster } from 'sonner';
 import QueryProvider from '@/providers/QueryProvider';
 import './globals.css';
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
-  weight: ['400', '700'],
+  weight: ['400', '600', '700'],
   variable: '--font-serif',
 });
 
 const inter = Inter({
   subsets: ['latin'],
-  weight: ['400', '500', '600'],
+  weight: ['300', '400', '500', '600'],
   variable: '--font-sans',
+});
+
+const notoSerifEthiopic = Noto_Serif_Ethiopic({
+  subsets: ['ethiopic'],
+  weight: ['400', '600', '700'],
+  variable: '--font-ethiopic',
 });
 
 export const metadata: Metadata = {
@@ -30,7 +36,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${playfair.variable} ${inter.variable}`}>
+    <html lang="en" className={`${playfair.variable} ${inter.variable} ${notoSerifEthiopic.variable}`}>
       <body className="bg-cream font-sans text-charcoal">
         <QueryProvider>
           <Toaster position="top-right" richColors />

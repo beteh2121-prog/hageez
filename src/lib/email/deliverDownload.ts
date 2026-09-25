@@ -1,13 +1,5 @@
 import { Resend } from 'resend';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-
-function getServiceClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
-}
+import { createServiceClient } from '@/lib/supabase/service';
 
 interface DeliverDownloadParams {
   downloadId: string;
@@ -24,7 +16,7 @@ function buildDeliveryEmailHtml(title: string, signedUrl: string): string {
   return `
   <div style="font-family: Inter, sans-serif; background-color: #FAF4E8; padding: 32px;">
     <div style="max-width: 480px; margin: 0 auto; background-color: #ffffff; border-radius: 4px; overflow: hidden;">
-      <div style="background-color: #C9922A; padding: 24px; text-align: center;">
+      <div style="background-color: #C67D10; padding: 24px; text-align: center;">
         <h1 style="margin: 0; font-family: Georgia, serif; color: #3D1F0D; font-size: 20px;">
           Ethiopian Orthodox Heritage
         </h1>
@@ -34,12 +26,12 @@ function buildDeliveryEmailHtml(title: string, signedUrl: string): string {
         <p style="font-size: 16px; font-weight: 600;">${title}</p>
         <div style="text-align: center; margin: 32px 0;">
           <a href="${signedUrl}"
-             style="background-color: #C9922A; color: #3D1F0D; padding: 14px 32px; border-radius: 2px; text-decoration: none; font-weight: 600; display: inline-block;">
+             style="background-color: #C67D10; color: #3D1F0D; padding: 14px 32px; border-radius: 2px; text-decoration: none; font-weight: 600; display: inline-block;">
             Download Now
           </a>
         </div>
         <p style="font-size: 13px; color: #6B3A1F;">This link expires in 72 hours.</p>
-        <p style="font-size: 12px; color: #8C6318; margin-top: 24px;">
+        <p style="font-size: 12px; color: #975F0C; margin-top: 24px;">
           Need help? Contact us at support@yourdomain.com
         </p>
       </div>
@@ -53,7 +45,7 @@ export async function deliverDownloadEmail({
   email,
   signedUrl,
 }: DeliverDownloadParams): Promise<DeliverDownloadResult> {
-  const supabase = getServiceClient();
+  const supabase = createServiceClient();
 
   const { data: download, error: downloadError } = await supabase
     .from('downloads')

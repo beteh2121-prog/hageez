@@ -28,15 +28,11 @@ export default function AffiliateButton({ book, size = 'md', fullWidth = false }
       target="_blank"
       rel="noopener noreferrer nofollow sponsored"
       onClick={() => trackClick(book.id, book.marketplace)}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-brand bg-gold font-medium text-brown transition-colors hover:bg-gold-dark',
-        SIZE_CLASSES[size],
-        fullWidth && 'w-full'
-      )}
+      className={cn('btn-amazon gap-2', SIZE_CLASSES[size], fullWidth && 'w-full')}
     >
-      Buy on Amazon
-      {book.price_usd !== null && <span>— ${book.price_usd.toFixed(2)}</span>}
       <ExternalLink className="h-4 w-4" />
+      Buy on Amazon (Affiliate)
+      {book.price_usd !== null && <span>— ${book.price_usd.toFixed(2)}</span>}
     </a>
   );
 }

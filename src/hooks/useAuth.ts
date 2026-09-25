@@ -63,18 +63,12 @@ export function useSignUp() {
       const { data, error } = await supabase.auth.signUp({
         email: input.email,
         password: input.password,
+        options: { data: { full_name: input.full_name } },
       });
       if (error) throw error;
-
-      if (data.user) {
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: data.user.id,
-          email: input.email,
-          full_name: input.full_name,
-        });
-        if (profileError) throw profileError;
-      }
-
+      // No separate profiles insert here — the auth.users trigger in
+      // supabase/sql/profile_trigger.sql creates the profiles row and
+      // reads full_name from this signUp call's user metadata.
       return data;
     },
     onSuccess: () => {

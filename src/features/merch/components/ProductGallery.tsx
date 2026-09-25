@@ -19,6 +19,8 @@ export default function ProductGallery({ images, title }: { images: GalleryImage
     );
   }
 
+  // noUncheckedIndexedAccess: images[selected] could be undefined if
+  // state is somehow out of range — guard with ?? images[0]
   const primaryImage = images[selected] ?? images[0];
   const primaryUrl = primaryImage?.url ?? images[0]?.url ?? '';
   const primaryAlt = primaryImage?.alt ?? title;

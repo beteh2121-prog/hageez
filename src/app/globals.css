@@ -3,9 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --gold: #C9922A;
-  --gold-light: #E8B96A;
-  --gold-dark: #8C6318;
+  --gold: #C67D10;
+  --gold-light: #EEA02B;
+  --gold-dark: #975F0C;
+  --crimson: #93331F;
+  --crimson-light: #BD4128;
+  --crimson-dark: #692416;
   --brown: #3D1F0D;
   --brown-light: #6B3A1F;
   --brown-dark: #1C0D06;
@@ -14,6 +17,7 @@
   --charcoal: #1C1410;
   --font-serif: 'Playfair Display', Georgia, serif;
   --font-sans: 'Inter', system-ui, sans-serif;
+  --font-ethiopic: 'Noto Serif Ethiopic', serif;
 }
 
 body {
@@ -33,13 +37,19 @@ h1, h2, h3, h4 {
 
 .gold-divider {
   height: 1px;
-  background-color: rgba(201,146,42,0.25);
+  background-color: rgba(198,125,16,0.25);
   margin: 0;
+}
+
+.gold-rule {
+  width: 3rem;
+  height: 2px;
+  background-color: var(--gold);
 }
 
 .btn-primary {
   background-color: var(--gold);
-  color: var(--brown-dark);
+  color: var(--cream);
   padding: 0.625rem 1.5rem;
   border-radius: 2px;
   transition: background-color 200ms ease;
@@ -64,7 +74,7 @@ h1, h2, h3, h4 {
   font-weight: 500;
   font-size: 0.875rem;
 }
-.btn-secondary:hover { background-color: var(--gold); color: var(--brown-dark); }
+.btn-secondary:hover { background-color: var(--gold); color: var(--cream); }
 
 .btn-dark {
   background-color: var(--brown);
@@ -78,22 +88,34 @@ h1, h2, h3, h4 {
   font-weight: 500;
   font-size: 0.875rem;
 }
-.btn-dark:hover { background-color: var(--gold); color: var(--brown-dark); }
+.btn-dark:hover { background-color: var(--gold); color: var(--cream); }
 
-/* Page header used across all inner pages */
+.btn-amazon {
+  background-color: #FF9900;
+  color: white;
+  padding: 0.625rem 1.5rem;
+  border-radius: 2px;
+  transition: background-color 200ms ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+.btn-amazon:hover { background-color: #E68A00; }
+
 .page-header {
   background: var(--brown-dark);
   padding: 3rem 2rem 2.5rem;
 }
 
-/* Filter pill bar */
 .filter-bar {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
   padding: 1.25rem 2rem;
   background: white;
-  border-bottom: 1px solid rgba(201,146,42,0.15);
+  border-bottom: 1px solid rgba(198,125,16,0.15);
 }
 .filter-pill {
   font-size: 0.8125rem;
@@ -106,13 +128,12 @@ h1, h2, h3, h4 {
   transition: all 150ms;
 }
 .filter-pill.active {
-  background: var(--brown);
+  background: var(--gold);
   color: var(--cream);
-  border-color: var(--brown);
+  border-color: var(--gold);
 }
 .filter-pill:hover:not(.active) { border-color: var(--gold); color: var(--gold); }
 
-/* Free badge */
 .badge-free {
   display: inline-flex;
   align-items: center;
@@ -123,6 +144,28 @@ h1, h2, h3, h4 {
   padding: 0.2rem 0.625rem;
   border-radius: 9999px;
 }
+.badge-crimson {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: white;
+  background-color: var(--crimson);
+  padding: 0.2rem 0.625rem;
+  border-radius: 9999px;
+}
 
-/* Gold price text */
 .price-text { color: var(--gold); font-weight: 500; }
+
+.filter-select {
+  border: 1px solid rgba(61,31,13,0.15);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  background-color: white;
+  color: var(--charcoal);
+}
+.filter-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--gold);
+}

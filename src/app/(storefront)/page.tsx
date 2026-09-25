@@ -1,254 +1,206 @@
 import Link from 'next/link';
-import Image from 'next/image';
-import { ArrowRight, BookOpen, Download, Package } from 'lucide-react';
+import { ArrowRight, BookOpen, Download, ShoppingBag } from 'lucide-react';
 import { createStaticClient } from '@/lib/supabase/static';
 import { getAllSettings } from '@/lib/supabase/settings';
 import NewsletterForm from '@/components/shared/NewsletterForm';
-import type { Merch, KdpBook, Download as DownloadType } from '@/types';
+import BookCard from '@/features/books/components/BookCard';
+import MerchCard from '@/features/merch/components/MerchCard';
+import type { Merch, KdpBook } from '@/types';
 
 export const revalidate = 300;
 
-const COVER_GRADIENTS = [
-  'from-brown to-brown-light',
-  'from-brown-dark to-brown',
-  'from-brown-light to-gold-dark',
-  'from-[#0F2B1E] to-[#1D5E3A]',
+const CATEGORY_SHORTCUTS = [
+  { icon: BookOpen, label: 'Physical Books', sub: 'via Amazon KDP', href: '/books' },
+  { icon: Download, label: 'eBooks', sub: 'Instant delivery', href: '/ebooks' },
+  { icon: Download, label: 'Free Downloads', sub: 'Prayers & guides', href: '/downloads' },
+  { icon: ShoppingBag, label: 'Orthodox Merch', sub: 'Print on demand', href: '/shop' },
+];
+
+const MISSION_ITEMS = [
+  { icon: '📖', title: 'Theology', desc: 'Deep dives into Ethiopian Orthodox doctrine' },
+  { icon: '✝️', title: 'Liturgy', desc: 'Sacred texts and worship guides' },
+  { icon: '🕊️', title: 'Saints', desc: 'Lives of Ethiopian saints and martyrs' },
+  { icon: '🇪🇹', title: 'Heritage', desc: 'History and culture of the faith' },
 ];
 
 async function getHomeData() {
   const supabase = createStaticClient();
-  const [{ data: merch }, { data: books }, { data: freeDownloads }] = await Promise.all([
-    supabase.from('merch').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(3),
+  const [{ data: merch }, { data: books }] = await Promise.all([
+    supabase.from('merch').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(4),
     supabase.from('kdp_books').select('*').eq('is_published', true).eq('is_featured', true).limit(4),
-    supabase.from('downloads').select('*').eq('price_cents', 0).order('created_at', { ascending: false }).limit(2),
   ]);
   return {
     merch: (merch ?? []) as Merch[],
     books: (books ?? []) as KdpBook[],
-    freeDownloads: (freeDownloads ?? []) as DownloadType[],
   };
 }
 
 export default async function HomePage() {
-  const [{ merch, books, freeDownloads }, settings] = await Promise.all([
-    getHomeData(),
-    getAllSettings(),
-  ]);
-
-  const { hero, stats, testimonial } = settings;
+  const [{ merch, books }, settings] = await Promise.all([getHomeData(), getAllSettings()]);
+  const { hero, stats } = settings;
   const titleParts = hero.title.split('Faith');
 
   return (
     <div className="flex flex-col">
-
-      {/* HERO */}
-      <section className="relative overflow-hidden bg-brown-dark px-6 py-20 md:py-28">
-        <div className="pointer-events-none absolute -right-16 top-1/2 -translate-y-1/2 select-none font-serif text-[320px] leading-none text-gold/[0.05]">
-          ✝
-        </div>
-        <div className="relative mx-auto max-w-7xl">
-          <span className="mb-5 inline-block rounded-[2px] border border-gold/30 px-3 py-1 text-[11px] uppercase tracking-[2px] text-gold">
-            {hero.tagline}
-          </span>
-          <h1 className="max-w-2xl font-serif text-4xl font-medium leading-[1.15] text-cream sm:text-5xl lg:text-6xl">
-            {titleParts.length > 1 ? (
-              <>
-                {titleParts[0]}
-                <span className="text-gold">Faith</span>
-                {titleParts[1]}
-              </>
-            ) : (
-              hero.title
-            )}
-          </h1>
-          <p className="mt-5 max-w-xl text-base leading-relaxed text-cream/60">
-            {hero.subtitle}
-          </p>
-          <div className="mt-8 flex flex-wrap gap-4">
-            <Link href={hero.cta_primary_href} className="btn-primary gap-2 px-7 py-3 text-base">
-              {hero.cta_primary_text} <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href={hero.cta_secondary_href}
-              className="inline-flex items-center justify-center gap-2 rounded-[2px] border border-white/25 px-7 py-3 text-base text-cream transition-colors hover:border-white/50"
-            >
-              {hero.cta_secondary_text}
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* STATS */}
-      <div className="bg-gold">
-        <div className="mx-auto grid max-w-7xl grid-cols-2 divide-x divide-brown/20 md:grid-cols-4">
-          {stats.map((stat) => (
-            <div key={stat.label} className="py-5 text-center">
-              <div className="font-serif text-2xl font-medium text-brown-dark">{stat.num}</div>
-              <div className="mt-0.5 text-xs text-brown/70">{stat.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* FEATURED BOOKS */}
-      <section className="mx-auto w-full max-w-7xl px-6 py-16">
-        <div className="mb-8 flex items-end justify-between">
+      <section className="relative min-h-[85vh] overflow-hidden bg-gradient-to-br from-brown-dark via-brown-dark to-crimson-dark/60">
+        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-6 py-24 md:grid-cols-2">
           <div>
-            <h2 className="font-serif text-3xl text-brown">Featured Books</h2>
-            <p className="mt-1 text-sm text-charcoal/50">Curated KDP titles on Amazon</p>
-          </div>
-          <Link href="/books" className="flex items-center gap-1 text-sm text-gold hover:underline">
-            View all <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-          {books.length > 0
-            ? books.map((book, i) => (
-                <Link key={book.id} href={`/books/${book.asin}`} className="group">
-                  <div className={`relative aspect-[3/4] overflow-hidden rounded-[6px] bg-gradient-to-br ${COVER_GRADIENTS[i % 4]} shadow-gold-sm transition-shadow group-hover:shadow-gold-md`}>
-                    {book.cover_image_url
-                      ? <Image src={book.cover_image_url} alt={book.title} fill className="object-cover" sizes="(max-width:768px) 50vw,25vw" />
-                      : <div className="flex h-full items-center justify-center text-5xl">📖</div>}
-                    {i === 0 && <span className="absolute right-2 top-2 rounded-[2px] bg-gold px-2 py-0.5 text-[10px] font-medium text-brown-dark">Bestseller</span>}
-                  </div>
-                  <div className="mt-3">
-                    <h3 className="font-serif text-sm font-medium leading-snug text-brown line-clamp-2">{book.title}</h3>
-                    <p className="mt-1 text-xs text-charcoal/50">{book.author}</p>
-                    <p className="mt-1 text-sm font-medium text-gold">{book.price_usd ? `$${book.price_usd.toFixed(2)}` : 'On Amazon'}</p>
-                  </div>
-                </Link>
-              ))
-            : ['The Fetha Negest', 'Liturgy of St. Yared', 'Kebra Nagast', 'Andemta Commentary'].map((title, i) => (
-                <Link key={title} href="/books" className="group">
-                  <div className={`relative aspect-[3/4] overflow-hidden rounded-[6px] bg-gradient-to-br ${COVER_GRADIENTS[i]} shadow-gold-sm`}>
-                    <div className="flex h-full items-center justify-center text-5xl">{['📖','✝️','🕊️','🌿'][i]}</div>
-                    {i === 0 && <span className="absolute right-2 top-2 rounded-[2px] bg-gold px-2 py-0.5 text-[10px] font-medium text-brown-dark">Bestseller</span>}
-                  </div>
-                  <div className="mt-3">
-                    <h3 className="font-serif text-sm font-medium leading-snug text-brown">{title}</h3>
-                    <p className="mt-1 text-xs text-charcoal/50">Traditional</p>
-                    <p className="mt-1 text-sm font-medium text-gold">On Amazon</p>
-                  </div>
-                </Link>
-              ))}
-        </div>
-      </section>
-
-      <div className="gold-divider mx-6" />
-
-      {/* MERCH */}
-      <section className="mx-auto w-full max-w-7xl px-6 py-16">
-        <div className="mb-8 flex items-end justify-between">
-          <div>
-            <h2 className="font-serif text-3xl text-brown">New Merch</h2>
-            <p className="mt-1 text-sm text-charcoal/50">Print-on-demand via Fourthwall</p>
-          </div>
-          <Link href="/shop" className="flex items-center gap-1 text-sm text-gold hover:underline">
-            View all <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-          {merch.length > 0
-            ? merch.slice(0, 3).map((product) => (
-                <Link key={product.id} href={`/shop/${product.id}`} className="group overflow-hidden rounded-[8px] border border-gold/10 bg-white shadow-gold-sm hover:shadow-gold-md transition-shadow">
-                  <div className="relative aspect-square overflow-hidden bg-cream-dark">
-                    {product.images[0]
-                      ? <Image src={product.images[0].url} alt={product.images[0].alt} fill className="object-cover transition-transform group-hover:scale-105" sizes="(max-width:640px) 100vw,33vw" />
-                      : <div className="flex h-full items-center justify-center text-5xl">✝️</div>}
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-serif text-base font-medium text-brown">{product.title}</h3>
-                    <p className="mt-1 text-sm font-medium text-gold">${(product.price_cents / 100).toFixed(2)}</p>
-                    <span className="btn-dark mt-3 block w-full text-center text-sm">Add to Cart</span>
-                  </div>
-                </Link>
-              ))
-            : [{ emoji:'✝️', bg:'#FAF4E8', name:'Ethiopian Cross Tee', price:'$32.00' }, { emoji:'🕍', bg:'#F0E4CC', name:'Lalibela Art Print', price:'$28.00' }, { emoji:'📿', bg:'#1C0D06', name:'Prayer Beads Mug', price:'$19.00' }].map((item) => (
-                <Link key={item.name} href="/shop" className="group overflow-hidden rounded-[8px] border border-gold/10 bg-white shadow-gold-sm hover:shadow-gold-md transition-shadow">
-                  <div className="flex aspect-square items-center justify-center text-6xl" style={{ background: item.bg }}>{item.emoji}</div>
-                  <div className="p-4">
-                    <h3 className="font-serif text-base font-medium text-brown">{item.name}</h3>
-                    <p className="mt-1 text-sm font-medium text-gold">{item.price}</p>
-                    <span className="btn-dark mt-3 block w-full text-center text-sm">Add to Cart</span>
-                  </div>
-                </Link>
-              ))}
-        </div>
-      </section>
-
-      {/* TESTIMONIAL */}
-      <div className="bg-brown px-6 py-14 text-center">
-        <p className="mx-auto max-w-2xl font-serif text-xl italic leading-relaxed text-cream/90 md:text-2xl">
-          &ldquo;{testimonial.quote}&rdquo;
-        </p>
-        <p className="mt-4 text-sm text-gold">{testimonial.attribution}</p>
-      </div>
-
-      {/* FREE DOWNLOADS */}
-      <section className="bg-cream-dark/50 px-6 py-16">
-        <div className="mx-auto max-w-7xl">
-          <div className="mb-8 flex items-end justify-between">
-            <div>
-              <h2 className="font-serif text-3xl text-brown">Free Downloads</h2>
-              <p className="mt-1 text-sm text-charcoal/50">Liturgical texts, prayers, and guides — no cost</p>
+            <span className="mb-4 block text-xs uppercase tracking-[0.3em] text-gold">{hero.tagline}</span>
+            <h1 className="font-serif text-5xl font-bold leading-[1.1] text-cream md:text-6xl">
+              {titleParts.length > 1 ? (
+                <>
+                  {titleParts[0]}
+                  <br />
+                  <span className="text-gold">Faith{titleParts[1]}</span>
+                </>
+              ) : (
+                hero.title
+              )}
+            </h1>
+            <p className="mt-6 max-w-lg text-lg leading-relaxed text-cream/70">{hero.subtitle}</p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href={hero.cta_primary_href} className="btn-primary gap-2 px-7 py-3 text-base">
+                {hero.cta_primary_text} <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href={hero.cta_secondary_href}
+                className="inline-flex items-center justify-center gap-2 rounded-brand border border-gold/50 px-7 py-3 text-base text-cream transition-colors hover:bg-gold/10 hover:border-gold"
+              >
+                {hero.cta_secondary_text}
+              </Link>
             </div>
-            <Link href="/downloads" className="flex items-center gap-1 text-sm text-gold hover:underline">
-              View all <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {freeDownloads.length > 0
-              ? freeDownloads.map((dl) => (
-                  <Link key={dl.id} href={`/downloads/${dl.slug}`} className="flex gap-4 rounded-[8px] border border-gold/10 bg-white p-5 transition-colors hover:border-gold/30">
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl">📄</div>
-                    <div>
-                      <h3 className="font-serif text-base font-medium text-brown">{dl.title}</h3>
-                      {dl.description && <p className="mt-1 text-sm text-charcoal/55 line-clamp-2">{dl.description}</p>}
-                      <span className="badge-free mt-2 inline-flex">Free</span>
-                    </div>
-                  </Link>
-                ))
-              : [{ name:'Daily Prayer Guide', desc:"Morning and evening prayers. Includes Ge'ez transliteration." }, { name:'Fasting Calendar 2025', desc:'Complete fasting schedule with explanations.' }].map((item) => (
-                  <Link key={item.name} href="/downloads" className="flex gap-4 rounded-[8px] border border-gold/10 bg-white p-5 transition-colors hover:border-gold/30">
-                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-[8px] bg-gradient-to-br from-gold to-gold-dark text-2xl">📄</div>
-                    <div>
-                      <h3 className="font-serif text-base font-medium text-brown">{item.name}</h3>
-                      <p className="mt-1 text-sm text-charcoal/55">{item.desc}</p>
-                      <span className="badge-free mt-2 inline-flex">Free</span>
-                    </div>
-                  </Link>
+
+            {stats.length > 0 && (
+              <div className="mt-12 grid grid-cols-3 gap-6 border-t border-white/10 pt-8">
+                {stats.slice(0, 3).map((stat) => (
+                  <div key={stat.label}>
+                    <div className="font-serif text-2xl font-bold text-gold">{stat.num}</div>
+                    <div className="mt-0.5 text-xs text-cream/50">{stat.label}</div>
+                  </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          <div className="hidden items-center justify-center md:flex">
+            <div className="relative h-72 w-72">
+              <div className="absolute inset-0 rounded-full bg-gold/20 blur-3xl" />
+              <div className="relative flex h-full w-full items-center justify-center rounded-full border border-gold/20 bg-gradient-to-br from-gold/30 to-crimson/30">
+                <div className="text-center">
+                  <span className="block font-ethiopic text-6xl text-gold">✝</span>
+                  <span className="mt-2 block font-ethiopic text-xl text-gold/70">ሥዕለ ቤት</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* VALUE PROPS */}
-      <section className="mx-auto w-full max-w-7xl px-6 py-16">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-          {[
-            { icon: BookOpen, title: 'KDP Books', desc: 'Curated Amazon affiliate titles on Ethiopian Orthodox theology and history.' },
-            { icon: Download, title: 'Digital Downloads', desc: 'Instant Gumroad delivery — ebooks, prayers, guides, and liturgical texts.' },
-            { icon: Package, title: 'Premium Merch', desc: 'Print-on-demand products with Ethiopian Orthodox designs via Fourthwall.' },
-          ].map((item) => (
-            <div key={item.title} className="rounded-[8px] border border-gold/10 bg-white p-6">
-              <item.icon className="h-6 w-6 text-gold" />
-              <h3 className="mt-3 font-serif text-lg text-brown">{item.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-charcoal/55">{item.desc}</p>
-            </div>
-          ))}
+      <section className="bg-cream-dark/40 py-14">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {CATEGORY_SHORTCUTS.map((cat) => (
+              <Link
+                key={cat.href}
+                href={cat.href}
+                className="group rounded-brand-md border border-gold/10 bg-white p-5 text-center transition-all duration-200 hover:-translate-y-1 hover:shadow-gold-md"
+              >
+                <cat.icon className="mx-auto mb-3 h-8 w-8 text-gold transition-transform group-hover:scale-110" />
+                <div className="font-serif text-sm font-semibold text-brown">{cat.label}</div>
+                <div className="mt-0.5 text-xs text-charcoal/50">{cat.sub}</div>
+              </Link>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* NEWSLETTER */}
-      <div className="bg-cream-dark">
-        <div className="mx-auto max-w-xl px-6 py-16 text-center">
-          <h2 className="font-serif text-3xl text-brown">Stay Connected</h2>
-          <p className="mt-3 text-sm leading-relaxed text-charcoal/60">
-            New books, free resources, and spiritual content — delivered to your inbox.
-          </p>
-          <NewsletterForm />
+      <section className="mx-auto w-full max-w-7xl px-6 py-20">
+        <div className="mb-10 flex items-end justify-between">
+          <div>
+            <span className="mb-2 block text-xs uppercase tracking-[0.3em] text-gold">Curated Collection</span>
+            <h2 className="font-serif text-3xl font-bold text-brown md:text-4xl">Featured Books</h2>
+          </div>
+          <Link href="/books" className="mb-2 flex shrink-0 items-center gap-1 text-sm text-gold hover:underline">
+            View all <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
-      </div>
+
+        {books.length > 0 ? (
+          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+            {books.map((book) => <BookCard key={book.id} book={book} />)}
+          </div>
+        ) : (
+          <div className="py-16 text-center text-charcoal/40">
+            <BookOpen className="mx-auto mb-4 h-12 w-12 opacity-30" />
+            <p>Books coming soon. Check back later!</p>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-gold py-16 text-cream">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 px-6 md:grid-cols-2">
+          <div>
+            <span className="text-xs uppercase tracking-widest text-cream/70">Our Mission</span>
+            <h2 className="mt-2 font-serif text-3xl font-bold md:text-4xl">Preserving Ancient Wisdom</h2>
+            <p className="mt-4 leading-relaxed text-cream/85">
+              Ethiopian Orthodox Heritage is dedicated to making Tewahedo theology, history, liturgy, and
+              literature accessible to the global Orthodox community and curious seekers worldwide.
+            </p>
+            <Link
+              href="/about"
+              className="mt-6 inline-flex items-center gap-2 rounded-brand border border-cream/40 px-6 py-2.5 text-sm transition-colors hover:bg-cream/10"
+            >
+              Learn More <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {MISSION_ITEMS.map((item) => (
+              <div key={item.title} className="rounded-brand-md bg-cream/10 p-4">
+                <span className="mb-2 block text-2xl">{item.icon}</span>
+                <div className="font-serif text-sm font-semibold">{item.title}</div>
+                <div className="mt-1 text-xs text-cream/70">{item.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto w-full max-w-7xl px-6 py-20">
+        <div className="mb-10 flex items-end justify-between">
+          <div>
+            <span className="mb-2 block text-xs uppercase tracking-[0.3em] text-gold">Print on Demand</span>
+            <h2 className="font-serif text-3xl font-bold text-brown md:text-4xl">Orthodox Merch</h2>
+            <p className="mt-2 text-sm text-charcoal/55">Faith-inspired apparel and accessories, fulfilled by Fourthwall.</p>
+          </div>
+          <Link href="/shop" className="mb-2 flex shrink-0 items-center gap-1 text-sm text-gold hover:underline">
+            View all <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+
+        {merch.length > 0 ? (
+          <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
+            {merch.map((product) => <MerchCard key={product.id} product={product} />)}
+          </div>
+        ) : (
+          <div className="py-16 text-center text-charcoal/40">
+            <ShoppingBag className="mx-auto mb-4 h-12 w-12 opacity-30" />
+            <p>Merch coming soon!</p>
+          </div>
+        )}
+      </section>
+
+      <section className="bg-cream-dark/60 py-20">
+        <div className="mx-auto max-w-2xl px-6 text-center">
+          <span className="text-xs uppercase tracking-widest text-gold">Stay Connected</span>
+          <h2 className="mt-2 font-serif text-3xl font-bold text-brown md:text-4xl">Join Our Community</h2>
+          <p className="mt-3 text-charcoal/60">
+            New book releases, free resources, and spiritual reflections delivered to your inbox.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <NewsletterForm />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

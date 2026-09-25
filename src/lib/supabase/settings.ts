@@ -1,5 +1,7 @@
 import { createStaticClient } from './static';
 
+// ── Setting value types ───────────────────────────────────────────────────
+
 export interface SiteSettings {
   name: string;
   description: string;
@@ -47,6 +49,8 @@ export interface SitePage {
   updated_at: string;
 }
 
+// ── Defaults (shown if the DB has no row yet, e.g. before migration runs) ──
+
 export const DEFAULT_SITE: SiteSettings = {
   name: 'Ethiopian Orthodox Heritage',
   description: 'Ethiopian Orthodox faith, culture, and crafts.',
@@ -93,6 +97,11 @@ export interface AllSiteSettings {
   testimonial: TestimonialSettings;
   footer: FooterSettings;
 }
+
+// ── Fetchers ─────────────────────────────────────────────────────────────
+// All use createStaticClient (anon key) since site_settings is publicly
+// readable per RLS — no cookie/session required, safe to call from any
+// Server Component including generateStaticParams / layouts.
 
 export async function getAllSettings(): Promise<AllSiteSettings> {
   try {

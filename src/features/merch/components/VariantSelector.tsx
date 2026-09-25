@@ -29,12 +29,14 @@ export default function VariantSelector({
 }: VariantSelectorProps) {
   const addItem = useCartStore((state) => state.addItem);
 
+  // useState initialiser cannot accept null — use undefined + first element
   const firstVariant = variants[0];
   const [selectedVariant, setSelectedVariant] = useState<Variant | undefined>(firstVariant);
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
 
+  // Build attribute groups from all variants (e.g. Color, Size)
   const attributeGroups: Record<string, string[]> = {};
   variants.forEach((v) => {
     v.attributes?.forEach((attr) => {
@@ -111,10 +113,12 @@ export default function VariantSelector({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Price */}
       {price && (
         <p className="font-serif text-3xl font-medium text-gold">{price}</p>
       )}
 
+      {/* Variant attributes (Color, Size, etc.) */}
       {Object.entries(attributeGroups).map(([attrName, values]) => (
         <div key={attrName}>
           <p className="mb-2 text-sm font-medium text-charcoal/70">
@@ -152,6 +156,7 @@ export default function VariantSelector({
         </div>
       ))}
 
+      {/* Quantity */}
       <div>
         <p className="mb-2 text-sm font-medium text-charcoal/70">Quantity</p>
         <div className="flex items-center gap-3">
@@ -173,6 +178,7 @@ export default function VariantSelector({
         </div>
       </div>
 
+      {/* CTA Buttons */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <button
           type="button"
