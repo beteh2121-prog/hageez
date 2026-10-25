@@ -1,78 +1,90 @@
 'use client';
 
 import { useState } from 'react';
-import { ShoppingBag, Loader2, Check, Minus, Plus } from 'lucide-react';
+import { ShoppingBag, Check, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
+import { buildFourthwallCheckoutUrl, getFourthwallStoreUrl } from '@/lib/fourthwall/checkout';
+import type { FourthwallVariantAttributes } from '@/lib/fourthwall/client';
 
-interface Variant {
+export interface SelectorVariant {
   id: string;
   name: string;
   unitPrice: { value: number; currency: string };
-  attributes?: { name: string; value: string }[];
+  attributes?: FourthwallVariantAttributes;
 }
 
 interface VariantSelectorProps {
-  productId: string;
-  productDbId: string;
+  fourthwallId: string;
   productTitle: string;
   productImage?: string;
-  variants: Variant[];
+  variants: SelectorVariant[];
+  storeUrl: string;
+}
+
+// Pulls Color / Size out of a variant when Fourthwall provides them.
+// Anything else falls back to a plain list of variants by name, so an
+// unexpected attribute shape can never break purchasing.
+function optionsOf(variant: SelectorVariant): Record<string, string> {
+  const options: Record<string, string> = {};
+  const colorName = variant.attributes?.color?.name;
+  const sizeName = variant.attributes?.size?.name;
+  if (colorName) options['Color'] = colorName;
+  if (sizeName) options['Size'] = sizeName;
+  return options;
 }
 
 export default function VariantSelector({
-  productId,
-  productDbId,
+  fourthwallId,
   productTitle,
   productImage,
   variants,
+  storeUrl,
 }: VariantSelectorProps) {
   const addItem = useCartStore((state) => state.addItem);
+  const resolvedStoreUrl = getFourthwallStoreUrl() || storeUrl;
 
-  // useState initialiser cannot accept null — use undefined + first element
-  const firstVariant = variants[0];
-  const [selectedVariant, setSelectedVariant] = useState<Variant | undefined>(firstVariant);
+  const groups: Record<string, string[]> = {};
+  for (const variant of variants) {
+    for (const [name, value] of Object.entries(optionsOf(variant))) {
+      const existing = groups[name] ?? [];
+      if (!existing.includes(value)) existing.push(value);
+      groups[name] = existing;
+    }
+  }
+  const groupNames = Object.keys(groups);
+  const useOptionGroups = groupNames.length > 0;
+
+  const [selectedId, setSelectedId] = useState<string | undefined>(variants[0]?.id);
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>(() =>
+    variants[0] ? optionsOf(variants[0]) : {}
+  );
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
 
-  // Build attribute groups from all variants (e.g. Color, Size)
-  const attributeGroups: Record<string, string[]> = {};
-  variants.forEach((v) => {
-    v.attributes?.forEach((attr) => {
-      if (!attributeGroups[attr.name]) attributeGroups[attr.name] = [];
-      const existing = attributeGroups[attr.name];
-      if (existing && !existing.includes(attr.value)) {
-        existing.push(attr.value);
-      }
+  const selectedVariant = variants.find((variant) => variant.id === selectedId);
+
+  function chooseOption(name: string, value: string) {
+    const next = { ...selectedOptions, [name]: value };
+    setSelectedOptions(next);
+    const match = variants.find((variant) => {
+      const own = optionsOf(variant);
+      return groupNames.every((group) => own[group] === next[group]);
     });
-  });
+    if (match) setSelectedId(match.id);
+  }
 
-  const [selectedAttrs, setSelectedAttrs] = useState<Record<string, string>>(() => {
-    const defaults: Record<string, string> = {};
-    firstVariant?.attributes?.forEach((a) => {
-      defaults[a.name] = a.value;
-    });
-    return defaults;
-  });
-
-  function selectAttribute(name: string, value: string) {
-    const updated = { ...selectedAttrs, [name]: value };
-    setSelectedAttrs(updated);
-    const match = variants.find((v) =>
-      v.attributes?.every((a) => updated[a.name] === a.value)
-    );
-    if (match) setSelectedVariant(match);
+  function label(variant: SelectorVariant): string {
+    return variant.attributes?.description || variant.name;
   }
 
   function handleAddToCart() {
     if (!selectedVariant) return;
     addItem({
-      id: productDbId,
-      fourthwall_id: productId,
-      title:
-        productTitle +
-        (selectedVariant.name !== 'Default' ? ` — ${selectedVariant.name}` : ''),
+      id: selectedVariant.id,
+      variant_id: selectedVariant.id,
+      fourthwall_id: fourthwallId,
+      title: variants.length > 1 ? `${productTitle} — ${label(selectedVariant)}` : productTitle,
       price_cents: Math.round(selectedVariant.unitPrice.value * 100),
       quantity,
       image: productImage,
@@ -83,87 +95,85 @@ export default function VariantSelector({
     setTimeout(() => setAdded(false), 2000);
   }
 
-  async function handleBuyNow() {
+  function handleBuyNow() {
     if (!selectedVariant) return;
-    setCheckingOut(true);
-    try {
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: [{ fourthwall_id: productId, quantity }],
-        }),
-      });
-      const data = (await res.json()) as { checkoutUrl?: string; error?: string };
-      if (!res.ok || !data.checkoutUrl) {
-        toast.error(data.error ?? 'Could not start checkout');
-        return;
-      }
-      window.location.href = data.checkoutUrl;
-    } catch {
-      toast.error('Could not reach checkout. Please try again.');
-    } finally {
-      setCheckingOut(false);
+    const url = buildFourthwallCheckoutUrl(resolvedStoreUrl, [
+      { variantId: selectedVariant.id, quantity },
+    ]);
+    if (!url) {
+      toast.error('Checkout is not configured yet — the Fourthwall store URL is missing.');
+      return;
     }
+    window.location.href = url;
   }
 
-  const price = selectedVariant
-    ? `$${selectedVariant.unitPrice.value.toFixed(2)}`
-    : null;
+  if (!selectedVariant) {
+    return <p className="text-sm text-charcoal/50">This product is currently unavailable.</p>;
+  }
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Price */}
-      {price && (
-        <p className="font-serif text-3xl font-medium text-gold">{price}</p>
-      )}
+      <p className="font-serif text-3xl font-medium text-gold">
+        ${selectedVariant.unitPrice.value.toFixed(2)}
+      </p>
 
-      {/* Variant attributes (Color, Size, etc.) */}
-      {Object.entries(attributeGroups).map(([attrName, values]) => (
-        <div key={attrName}>
-          <p className="mb-2 text-sm font-medium text-charcoal/70">
-            {attrName}:{' '}
-            <span className="font-normal text-charcoal">{selectedAttrs[attrName]}</span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {values.map((value) => {
-              const isActive = selectedAttrs[attrName] === value;
-              const isColor = attrName.toLowerCase() === 'color';
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => selectAttribute(attrName, value)}
-                  className={
-                    isColor
-                      ? `h-8 min-w-[2rem] rounded-full border-2 px-3 text-xs font-medium transition-all ${
-                          isActive
-                            ? 'border-gold bg-gold text-brown-dark'
-                            : 'border-gold/20 bg-cream-dark text-charcoal hover:border-gold/50'
-                        }`
-                      : `rounded-[4px] border px-4 py-1.5 text-sm font-medium transition-all ${
-                          isActive
-                            ? 'border-brown bg-brown text-cream'
-                            : 'border-gold/20 bg-white text-charcoal hover:border-gold'
-                        }`
-                  }
-                >
-                  {value}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+      {useOptionGroups
+        ? groupNames.map((groupName) => (
+            <div key={groupName}>
+              <p className="mb-2 text-sm font-medium text-charcoal/70">
+                {groupName}: <span className="font-normal text-charcoal">{selectedOptions[groupName]}</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {(groups[groupName] ?? []).map((value) => {
+                  const isActive = selectedOptions[groupName] === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => chooseOption(groupName, value)}
+                      className={`rounded-brand border px-4 py-1.5 text-sm font-medium transition-all ${
+                        isActive
+                          ? 'border-brown bg-brown text-cream'
+                          : 'border-gold/20 bg-white text-charcoal hover:border-gold'
+                      }`}
+                    >
+                      {value}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        : variants.length > 1 && (
+            <div>
+              <p className="mb-2 text-sm font-medium text-charcoal/70">Option</p>
+              <div className="flex flex-wrap gap-2">
+                {variants.map((variant) => (
+                  <button
+                    key={variant.id}
+                    type="button"
+                    onClick={() => setSelectedId(variant.id)}
+                    className={`rounded-brand border px-4 py-1.5 text-sm font-medium transition-all ${
+                      selectedId === variant.id
+                        ? 'border-brown bg-brown text-cream'
+                        : 'border-gold/20 bg-white text-charcoal hover:border-gold'
+                    }`}
+                  >
+                    {label(variant)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
-      {/* Quantity */}
       <div>
         <p className="mb-2 text-sm font-medium text-charcoal/70">Quantity</p>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-[4px] border border-gold/30 text-charcoal hover:border-gold"
+            className="flex h-9 w-9 items-center justify-center rounded-brand border border-gold/30 text-charcoal hover:border-gold"
+            aria-label="Decrease quantity"
           >
             <Minus className="h-4 w-4" />
           </button>
@@ -171,43 +181,33 @@ export default function VariantSelector({
           <button
             type="button"
             onClick={() => setQuantity((q) => Math.min(99, q + 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-[4px] border border-gold/30 text-charcoal hover:border-gold"
+            className="flex h-9 w-9 items-center justify-center rounded-brand border border-gold/30 text-charcoal hover:border-gold"
+            aria-label="Increase quantity"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
       </div>
 
-      {/* CTA Buttons */}
       <div className="flex flex-col gap-3 sm:flex-row">
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          disabled={!selectedVariant}
-          className="btn-secondary inline-flex flex-1 items-center justify-center gap-2 disabled:opacity-50"
-        >
+        <button type="button" onClick={handleAddToCart} className="btn-secondary flex-1 gap-2">
           {added ? (
-            <><Check className="h-4 w-4" /> Added to Cart</>
+            <>
+              <Check className="h-4 w-4" /> Added to Cart
+            </>
           ) : (
-            <><ShoppingBag className="h-4 w-4" /> Add to Cart</>
+            <>
+              <ShoppingBag className="h-4 w-4" /> Add to Cart
+            </>
           )}
         </button>
-        <button
-          type="button"
-          onClick={handleBuyNow}
-          disabled={checkingOut || !selectedVariant}
-          className="btn-primary inline-flex flex-1 items-center justify-center gap-2 disabled:opacity-60"
-        >
-          {checkingOut ? (
-            <><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>
-          ) : (
-            'Buy Now'
-          )}
+        <button type="button" onClick={handleBuyNow} className="btn-primary flex-1">
+          Buy Now
         </button>
       </div>
 
       <p className="text-center text-xs text-charcoal/40">
-        Secure checkout powered by Fourthwall
+        You&apos;ll complete payment on Fourthwall&apos;s secure checkout.
       </p>
     </div>
   );

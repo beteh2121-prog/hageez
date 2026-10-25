@@ -8,41 +8,92 @@ interface CheckResult {
   detail: string;
 }
 
-const REQUIRED_ENV_VARS = [
-  'NEXT_PUBLIC_SUPABASE_URL',
-  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+// Server-side secrets are read at REQUEST time, so they must exist as
+// variables/secrets on the Cloudflare Worker itself — GitHub secrets only
+// cover the build step.
+const RUNTIME_SECRETS = [
   'SUPABASE_SERVICE_ROLE_KEY',
-  'NEXT_PUBLIC_SANITY_PROJECT_ID',
-  'NEXT_PUBLIC_SANITY_DATASET',
+  'FOURTHWALL_STOREFRONT_TOKEN',
+  'FOURTHWALL_WEBHOOK_SECRET',
+  'GUMROAD_ACCESS_TOKEN',
+  'CRON_SECRET',
   'RESEND_API_KEY',
   'RESEND_FROM_EMAIL',
-  'FOURTHWALL_WEBHOOK_SECRET',
-  'FOURTHWALL_STORE_URL',
-  'NEXT_PUBLIC_SITE_URL',
+  'IP_HASH_SALT',
 ] as const;
 
-function checkEnvVars(): CheckResult {
-  const missing = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
+function checkRuntimeSecrets(): CheckResult {
+  const missing = RUNTIME_SECRETS.filter((name) => !process.env[name]);
   return {
-    name: 'Environment variables',
+    name: 'Worker runtime secrets',
     ok: missing.length === 0,
-    detail: missing.length === 0 ? 'All required env vars are set.' : `Missing: ${missing.join(', ')}`,
+    detail:
+      missing.length === 0
+        ? 'All runtime secrets are set on the Worker.'
+        : `Missing on the Worker: ${missing.join(', ')}. Add them in Cloudflare → Workers → Settings → Variables and Secrets (type: Secret).`,
   };
 }
 
-async function checkSupabase(): Promise<CheckResult> {
+// Static references on purpose: Next inlines NEXT_PUBLIC_* at build time, but
+// only for literal `process.env.NEXT_PUBLIC_X` expressions.
+function checkBuildConfig(): CheckResult {
+  const present: Record<string, boolean> = {
+    NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+    NEXT_PUBLIC_SANITY_PROJECT_ID: Boolean(process.env.NEXT_PUBLIC_SANITY_PROJECT_ID),
+    NEXT_PUBLIC_SITE_URL: Boolean(process.env.NEXT_PUBLIC_SITE_URL),
+    NEXT_PUBLIC_FOURTHWALL_STORE_URL: Boolean(process.env.NEXT_PUBLIC_FOURTHWALL_STORE_URL),
+  };
+  const missing = Object.entries(present)
+    .filter(([, isSet]) => !isSet)
+    .map(([name]) => name);
+  return {
+    name: 'Build-time config',
+    ok: missing.length === 0,
+    detail:
+      missing.length === 0
+        ? 'All build-time values were baked into this deployment.'
+        : `Not set when this deployment was built: ${missing.join(', ')}. Check the GitHub secret and the deploy workflow's env list.`,
+  };
+}
+
+async function checkCatalog(): Promise<CheckResult> {
   try {
     const supabase = createServiceClient();
-    const { error } = await supabase.from('profiles').select('id', { count: 'exact', head: true });
-    if (error) {
-      return { name: 'Supabase', ok: false, detail: `Query failed: ${error.message}` };
+    const [merchActive, merchTotal, downloadsTotal, downloadsGumroad, booksPublished] = await Promise.all([
+      supabase.from('merch').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+      supabase.from('merch').select('id', { count: 'exact', head: true }),
+      supabase.from('downloads').select('id', { count: 'exact', head: true }),
+      supabase.from('downloads').select('id', { count: 'exact', head: true }).eq('source', 'gumroad'),
+      supabase.from('kdp_books').select('id', { count: 'exact', head: true }).eq('is_published', true),
+    ]);
+
+    const failed = [merchActive, merchTotal, downloadsTotal, downloadsGumroad, booksPublished].find(
+      (result) => result.error
+    );
+    if (failed?.error) {
+      return { name: 'Catalog (database)', ok: false, detail: `Query failed: ${failed.error.message}` };
     }
-    return { name: 'Supabase', ok: true, detail: 'Connected and queried profiles table successfully.' };
+
+    const active = merchActive.count ?? 0;
+    const summary =
+      `merch ${active} active of ${merchTotal.count ?? 0} · ` +
+      `downloads ${downloadsTotal.count ?? 0} (${downloadsGumroad.count ?? 0} from Gumroad) · ` +
+      `books ${booksPublished.count ?? 0} published`;
+
+    return {
+      name: 'Catalog (database)',
+      ok: active > 0,
+      detail:
+        active > 0
+          ? summary
+          : `${summary}. No active merch yet — run Admin → Settings → Catalog Sync → Sync Now.`,
+    };
   } catch (err) {
     return {
-      name: 'Supabase',
+      name: 'Catalog (database)',
       ok: false,
-      detail: err instanceof Error ? err.message : 'Unknown error constructing client.',
+      detail: err instanceof Error ? err.message : 'Unknown error reading the catalog.',
     };
   }
 }
@@ -61,21 +112,12 @@ async function checkSanity(): Promise<CheckResult> {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const [envCheck, supabaseCheck, sanityCheck] = await Promise.all([
-    Promise.resolve(checkEnvVars()),
-    checkSupabase(),
-    checkSanity(),
-  ]);
-
-  const checks = [envCheck, supabaseCheck, sanityCheck];
-  const allOk = checks.every((c) => c.ok);
+  const [catalogCheck, sanityCheck] = await Promise.all([checkCatalog(), checkSanity()]);
+  const checks = [checkBuildConfig(), checkRuntimeSecrets(), catalogCheck, sanityCheck];
+  const allOk = checks.every((check) => check.ok);
 
   return NextResponse.json(
-    {
-      status: allOk ? 'ok' : 'degraded',
-      checks,
-      timestamp: new Date().toISOString(),
-    },
+    { status: allOk ? 'ok' : 'degraded', checks, timestamp: new Date().toISOString() },
     { status: allOk ? 200 : 503 }
   );
 }

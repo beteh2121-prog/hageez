@@ -2,10 +2,9 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/store/cartStore';
+import { buildFourthwallCheckoutUrl, getFourthwallStoreUrl } from '@/lib/fourthwall/checkout';
 import PriceTag from '@/components/shared/PriceTag';
 import EmptyState from '@/components/shared/EmptyState';
 
@@ -14,44 +13,24 @@ export default function CartPage() {
   const removeItem = useCartStore((state) => state.removeItem);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const total = useCartStore((state) => state.total());
-  const [checkingOut, setCheckingOut] = useState(false);
 
-  async function handleCheckout() {
-    // Only merch items can go through Fourthwall checkout.
-    // Download items go through their own delivery flow.
-    const merchItems = items.filter((i) => i.type === 'merch');
+  const checkoutItems = items.filter((item) => item.variant_id);
+  const legacyItems = items.filter((item) => !item.variant_id);
 
-    if (merchItems.length === 0) {
-      toast.error('No purchasable items in cart. Visit each download page to buy individually.');
+  function handleCheckout() {
+    const url = buildFourthwallCheckoutUrl(
+      getFourthwallStoreUrl(),
+      checkoutItems.map((item) => ({ variantId: item.variant_id as string, quantity: item.quantity }))
+    );
+    if (!url) {
+      toast.error(
+        checkoutItems.length === 0
+          ? 'Nothing in your cart can be checked out yet.'
+          : 'Checkout is not configured yet — the Fourthwall store URL is missing.'
+      );
       return;
     }
-
-    setCheckingOut(true);
-    try {
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: merchItems.map((item) => ({
-            fourthwall_id: item.id,
-            quantity: item.quantity,
-          })),
-        }),
-      });
-
-      const data = (await res.json()) as { checkoutUrl?: string; error?: string };
-
-      if (!res.ok || !data.checkoutUrl) {
-        toast.error(data.error ?? 'Could not start checkout');
-        return;
-      }
-
-      window.location.href = data.checkoutUrl;
-    } catch {
-      toast.error('Could not reach checkout. Please try again.');
-    } finally {
-      setCheckingOut(false);
-    }
+    window.location.href = url;
   }
 
   if (items.length === 0) {
@@ -76,38 +55,29 @@ export default function CartPage() {
 
       <div className="mt-8 flex flex-col gap-4">
         {items.map((item) => (
-          <div key={item.id} className="flex items-center gap-4 rounded-brand-md border border-gold/10 p-4">
+          <div key={item.id} className="flex items-center gap-4 rounded-brand-md border border-gold/10 bg-white p-4">
             {item.image && (
-              <Image
-                src={item.image}
-                alt={item.title}
-                width={64}
-                height={64}
-                className="rounded-brand object-cover"
-              />
+              <Image src={item.image} alt={item.title} width={64} height={64} className="rounded-brand object-cover" />
             )}
             <div className="flex-1">
               <p className="font-serif text-brown">{item.title}</p>
               <PriceTag cents={item.price_cents} />
-              {item.type === 'download' && (
-                <p className="mt-1 text-xs text-charcoal/50">Visit the download page to purchase</p>
+              {!item.variant_id && (
+                <p className="mt-1 text-xs text-crimson">
+                  Saved before an update — remove it and add it again from its product page.
+                </p>
               )}
             </div>
-            {item.type === 'merch' && (
-              <input
-                type="number"
-                min={1}
-                max={99}
-                value={item.quantity}
-                onChange={(e) => updateQuantity(item.id, Number(e.target.value))}
-                className="w-16 rounded-brand border border-gold/30 px-2 py-1 text-center text-sm"
-              />
-            )}
-            <button
-              type="button"
-              onClick={() => removeItem(item.id)}
-              className="text-sm text-red-600 hover:underline"
-            >
+            <input
+              type="number"
+              min={1}
+              max={99}
+              value={item.quantity}
+              onChange={(e) => updateQuantity(item.id, Number(e.target.value))}
+              className="w-16 rounded-brand border border-gold/30 px-2 py-1 text-center text-sm"
+              aria-label={`Quantity for ${item.title}`}
+            />
+            <button type="button" onClick={() => removeItem(item.id)} className="text-sm text-red-600 hover:underline">
               Remove
             </button>
           </div>
@@ -123,20 +93,18 @@ export default function CartPage() {
         <button
           type="button"
           onClick={handleCheckout}
-          disabled={checkingOut}
-          className="btn-primary mt-4 inline-flex w-full items-center justify-center gap-2 disabled:opacity-60"
+          disabled={checkoutItems.length === 0}
+          className="btn-primary mt-4 w-full disabled:opacity-50"
         >
-          {checkingOut ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading checkout…
-            </>
-          ) : (
-            'Checkout'
-          )}
+          Checkout
         </button>
+        {legacyItems.length > 0 && (
+          <p className="mt-2 text-center text-xs text-charcoal/50">
+            {legacyItems.length} item(s) above will be left out of checkout until re-added.
+          </p>
+        )}
         <p className="mt-2 text-center text-xs text-charcoal/40">
-          Secure checkout powered by Fourthwall
+          You&apos;ll complete payment on Fourthwall&apos;s secure checkout.
         </p>
       </div>
     </div>

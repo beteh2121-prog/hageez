@@ -4,6 +4,8 @@ import { createServiceClient } from '@/lib/supabase/service';
 import { slugify } from '@/lib/utils/slugify';
 import {
   fetchAllFourthwallProducts,
+  isSoldOut,
+  lowestPriceCents,
   type FourthwallStorefrontProduct,
 } from '@/lib/fourthwall/client';
 import { fetchAllGumroadProducts, type GumroadProduct } from '@/lib/gumroad/client';
@@ -57,15 +59,10 @@ async function syncFourthwall(): Promise<SyncResult> {
   }
 
   for (const product of products) {
-    const lowestPrice = product.variants.reduce<number | null>((min, variant) => {
-      const value = variant.unitPrice.value;
-      return min === null || value < min ? value : min;
-    }, null);
-
-    const priceCents = Math.round((lowestPrice ?? 0) * 100);
     const title = product.name;
-    const slug = slugify(title);
-    const images = product.images.map((img) => ({
+    // Use Fourthwall's real slug: single-product lookups are by slug.
+    const slug = product.slug || slugify(title);
+    const images = (product.images ?? []).map((img) => ({
       url: img.transformedUrl || img.url,
       alt: title,
     }));
@@ -78,9 +75,10 @@ async function syncFourthwall(): Promise<SyncResult> {
           title,
           slug,
           description: product.description || null,
-          price_cents: priceCents,
+          // Bundles have no variants — lowestPriceCents handles both cases.
+          price_cents: lowestPriceCents(product),
           images,
-          status: product.state.type === 'SoldOut' ? 'archived' : 'active',
+          status: isSoldOut(product) ? 'archived' : 'active',
           currency: 'USD',
         },
         { onConflict: 'fourthwall_id' }

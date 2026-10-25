@@ -5,6 +5,7 @@ import type { Download } from '@/types';
 import { useSession } from '@/hooks/useAuth';
 import { useUserPurchases } from '@/hooks/useDownloads';
 import { formatPrice } from '@/lib/utils/formatPrice';
+import GumroadButton from '@/features/downloads/components/GumroadButton';
 
 const FILE_ICONS = { pdf: FileText, epub: BookOpen, mp3: Music, video: Video };
 
@@ -20,7 +21,7 @@ export default function DownloadCta({ download, storeUrl }: DownloadCtaProps) {
   const Icon = download.file_type ? FILE_ICONS[download.file_type] : ExternalLink;
   const hasPurchased = !!session && !!purchasedIds?.includes(download.id);
 
-  // GUMROAD: link directly to Gumroad for purchase and delivery
+  // GUMROAD: checkout opens as a popup overlay on this page.
   if (download.source === 'gumroad') {
     const url = download.external_url;
     if (!url) {
@@ -28,19 +29,16 @@ export default function DownloadCta({ download, storeUrl }: DownloadCtaProps) {
     }
     return (
       <div className="flex flex-col gap-2">
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn-primary inline-flex items-center gap-2"
-        >
-          <ExternalLink className="h-4 w-4" />
-          {download.price_cents === 0
-            ? 'Get for Free on Gumroad'
-            : 'Buy on Gumroad — ' + formatPrice(download.price_cents)}
-        </a>
+        <GumroadButton
+          url={url}
+          label={
+            download.price_cents === 0
+              ? 'Get Free Download'
+              : 'Buy Now — ' + formatPrice(download.price_cents)
+          }
+        />
         <p className="text-xs text-charcoal/40">
-          You will be taken to Gumroad to complete your purchase.
+          Secure checkout by Gumroad opens right here on this page.
         </p>
       </div>
     );
