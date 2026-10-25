@@ -364,3 +364,98 @@ unlike every other phase, this one could not be directly confirmed by a
 completed build in this sandbox. Treat the first real Cloudflare/GitHub
 Actions deploy after this change as the actual first test, and report
 back what it shows.
+
+---
+
+## Extracting Sanity Studio (fixing the Cloudflare free-tier bundle size)
+
+The first real Cloudflare deploy succeeded end-to-end but failed at the
+very last step: the compiled Worker was **3.89 MiB gzipped**, over the
+free tier's 3 MiB cap (paid tier allows 10 MiB for $5/month). Rather than
+pay, Studio was extracted to run as its own free, separately-hosted
+deployment on Sanity's infrastructure — the standard fix for this exact
+problem, confirmed against a real-world case study of another project
+hitting the identical issue for the identical reason (Sanity Studio's
+full framework — rich text engine, image tools, the whole editor UI —
+was being bundled into the Next.js app even though visitors to the
+storefront never touch any of it).
+
+### What changed
+- **Deleted** `src/app/studio/[[...tool]]/page.tsx` — this one file is
+  what pulled the entire `sanity` package and `@sanity/vision` into the
+  Cloudflare Worker via `NextStudio`. Removing it is the actual fix;
+  everything else below is either required plumbing or good hygiene.
+- **`sanity.config.ts`**: removed `basePath: '/studio'` (meaningless once
+  Studio isn't embedded in Next.js's own routing).
+- **`sanity.cli.ts`** (new): tells the Sanity CLI which project/dataset
+  to deploy Studio to.
+- **`package.json`**: moved `sanity`, `@sanity/vision`, `@sanity/icons`,
+  and `styled-components` (confirmed unused anywhere in `src/` via a full
+  grep — it was only ever a transitive need of Studio) from
+  `dependencies` to `devDependencies`. Added a `studio:deploy` script for
+  reference, though the actual deployment runs via CI, not locally.
+- **`.github/workflows/deploy-sanity-studio.yml`** (new): runs
+  `npx sanity deploy --url=<hostname> --yes` automatically whenever
+  `sanity/**`, `sanity.config.ts`, or `sanity.cli.ts` change on `main`.
+  `--url` sets the studio's `*.sanity.studio` hostname non-interactively
+  (only takes effect on first deploy) and `--yes` answers any other
+  prompts, so this runs unattended on GitHub's servers — consistent with
+  the project's no-local-terminal constraint. Requires a new
+  `SANITY_AUTH_TOKEN` GitHub secret (a Sanity API token with deploy
+  permission — separate from `SANITY_API_TOKEN`, which is for content
+  API reads).
+- **Admin sidebar's "Blog (Studio)" link**, and the blog page's "create
+  your first post" empty-state link, now point to the external
+  `https://<hostname>.sanity.studio` URL (configurable via
+  `NEXT_PUBLIC_SANITY_STUDIO_URL`, defaulting to
+  `ethiopianorthodoxheritage.sanity.studio` if unset) instead of the
+  removed internal `/studio` route, opening in a new tab.
+
+### Verification note — read before assuming the byte count is proven
+TypeScript (0 errors), ESLint (0 errors), and Vitest (22/22) all passed
+cleanly against this change. However, **the actual new bundle size could
+not be directly measured in this sandbox** this round — the same
+network restriction documented in the CMS section above (this
+environment cannot reach `supabase.co`, and the layout now queries it on
+every page) made the full `cf:build` verification take long enough that
+it didn't complete even after multiple extended attempts, including a
+backgrounded run given several minutes to finish.
+
+What's known with confidence: TypeScript/ESLint/tests are clean, and the
+one file removed (`src/app/studio/[[...tool]]/page.tsx`) was confirmed
+to be the only place in the entire `src/` tree importing `NextStudio`,
+`sanity`, or `@sanity/vision` (verified by grep before deletion) — so
+there's nothing subtly still pulling the Studio framework into the
+Next.js build. Combined with the reference case study's numbers (Studio
+embedding alone contributing ~4.7MB gzipped in a comparable project), the
+expectation is that this drops the Worker comfortably under the free 3
+MiB cap. But unlike most of this project's other changes, this one's
+actual before/after byte count has not been personally confirmed by a
+completed build — **the next real GitHub Actions deploy is the true
+test**, and its log (specifically the `gzip:` figure Wrangler prints
+during asset upload) should be checked directly against the 3 MiB
+threshold rather than assumed.
+
+---
+
+## Merch checkout & Gumroad overlay (verified against Fourthwall's docs)
+
+- **Fourthwall checkout** is a direct link built from variant ids
+  (`{store}/cart/checkout?products={variantId}:{qty},…`) — see
+  `src/lib/fourthwall/checkout.ts`. No cart API, no token at click time.
+  Payment always happens on Fourthwall's own page; Fourthwall offers no
+  overlay/embedded checkout (confirmed in their help docs).
+- Product lookups use Fourthwall's **slug** (`GET /v1/products/{slug}`), not id.
+  The sync now stores the real slug; the product page falls back to scanning
+  the catalog by id for rows synced before this change. Re-run Sync Now once.
+- Sync fixes: Fourthwall states are `AVAILABLE` / `SOLD_OUT` (was checking
+  `SoldOut`), and bundles have no `variants` (the old sync would crash on one,
+  aborting the whole run).
+- **Gumroad** purchases use Gumroad's documented overlay (`gumroad-button`
+  link + gumroad.js) so checkout pops up over our page.
+- `NEXT_PUBLIC_FOURTHWALL_STORE_URL` is copied from the existing
+  `FOURTHWALL_STORE_URL` GitHub secret in the workflows — no new secret.
+- `wrangler.jsonc` has `keep_vars: true` so dashboard-added variables survive
+  GitHub deploys. Add server secrets as type "Secret".
+- `/api/health` now reports build-time config, Worker runtime secrets, and
+  catalog counts (merch/downloads/books) in one page visit.
