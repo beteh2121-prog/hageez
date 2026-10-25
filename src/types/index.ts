@@ -149,8 +149,13 @@ export interface DownloadPurchase {
 // fourthwall_id stored here so cart checkout can send the correct
 // Fourthwall product ID, not our internal Supabase UUID.
 export interface CartItem {
+  // Unique cart line id. For merch this is the Fourthwall variant id, so two
+  // different sizes/colors of one product are separate lines.
   id: string;
   fourthwall_id?: string;
+  // Required for checkout: Fourthwall's direct-checkout link is built from
+  // variant ids. Items saved before this field existed won't have it.
+  variant_id?: string;
   title: string;
   price_cents: number;
   quantity: number;
