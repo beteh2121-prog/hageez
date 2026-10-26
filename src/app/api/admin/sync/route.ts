@@ -8,7 +8,11 @@ import {
   lowestPriceCents,
   type FourthwallStorefrontProduct,
 } from '@/lib/fourthwall/client';
-import { fetchAllGumroadProducts, type GumroadProduct } from '@/lib/gumroad/client';
+import {
+  fetchAllGumroadProducts,
+  getGumroadProductUrl,
+  type GumroadProduct,
+} from '@/lib/gumroad/client';
 
 interface SyncResult {
   source: 'fourthwall' | 'gumroad';
@@ -116,6 +120,12 @@ async function syncGumroad(): Promise<SyncResult> {
     if (!product.published) continue;
 
     const slug = slugify(product.name);
+    const productUrl = getGumroadProductUrl(product);
+
+    if (!productUrl) {
+      result.errors.push('"' + product.name + '": Gumroad returned no usable product URL');
+      continue;
+    }
 
     try {
       const { error } = await supabase.from('downloads').upsert(
@@ -130,7 +140,7 @@ async function syncGumroad(): Promise<SyncResult> {
           preview_url: product.preview_url,
           // external_url is where the Buy/Get button on the storefront
           // will send the customer — directly to the Gumroad product page.
-          external_url: product.url,
+          external_url: productUrl,
         },
         { onConflict: 'gumroad_product_id' }
       );

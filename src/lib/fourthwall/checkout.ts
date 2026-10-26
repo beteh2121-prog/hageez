@@ -18,10 +18,19 @@ export function getFourthwallStoreUrl(): string {
   return process.env.NEXT_PUBLIC_FOURTHWALL_STORE_URL ?? '';
 }
 
-function normalizeStoreUrl(storeUrl: string): string {
-  const trimmed = storeUrl.trim().replace(/\/+$/, '');
+/**
+ * Fourthwall's /cart/checkout lives at the ROOT of the shop domain, so any
+ * path, query or trailing slash someone pasted into the secret is dropped.
+ */
+export function normalizeStoreUrl(storeUrl: string): string {
+  const trimmed = storeUrl.trim();
   if (!trimmed) return '';
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    return new URL(withProtocol).origin;
+  } catch {
+    return '';
+  }
 }
 
 export function buildFourthwallCheckoutUrl(storeUrl: string, lines: CheckoutLine[]): string | null {

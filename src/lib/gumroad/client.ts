@@ -14,7 +14,10 @@ const GUMROAD_API_BASE = 'https://api.gumroad.com/v2';
 export interface GumroadProduct {
   id: string;
   name: string;
-  url: string;
+  // `short_url` is the public product/checkout page (e.g.
+  // https://you.gumroad.com/l/permalink). `url` is NOT reliably that page.
+  short_url?: string | null;
+  url?: string | null;
   description: string;
   preview_url: string | null;
   thumbnail_url: string | null;
@@ -36,6 +39,23 @@ interface GumroadProductsResponse {
 }
 
 export class GumroadApiError extends Error {}
+
+/** The public Gumroad page customers buy from, or null if none is usable. */
+export function getGumroadProductUrl(product: GumroadProduct): string | null {
+  const candidates = [product.short_url, product.url];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const parsed = new URL(candidate);
+      if (parsed.protocol === 'https:' && /(^|\.)(gumroad\.com|gum\.co)$/i.test(parsed.hostname)) {
+        return parsed.toString();
+      }
+    } catch {
+      // not a valid URL — try the next candidate
+    }
+  }
+  return null;
+}
 
 function getAccessToken(): string {
   const token = process.env.GUMROAD_ACCESS_TOKEN;
