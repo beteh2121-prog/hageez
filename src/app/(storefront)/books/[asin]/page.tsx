@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { productPath } from '@/lib/fourthwall/routes';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -164,7 +165,7 @@ export default async function BookPage({ params }: { params: { asin: string } })
 
           {relatedMerch && (
             <Link
-              href={`/shop/${relatedMerch.id}`}
+              href={productPath(relatedMerch.slug)}
               className="block rounded-brand-md border border-gold/20 p-4 transition-colors hover:border-gold"
             >
               Shop the related product: {relatedMerch.title} →

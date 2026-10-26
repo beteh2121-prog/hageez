@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import type { Merch } from '@/types';
+import { productPath } from '@/lib/fourthwall/routes';
 import PriceTag from '@/components/shared/PriceTag';
 import { ShoppingBag } from 'lucide-react';
 
@@ -9,7 +10,7 @@ export default function ProductCard({ product }: { product: Merch }) {
 
   return (
     <Link
-      href={`/shop/${product.id}`}
+      href={productPath(product.slug)}
       className="group flex flex-col overflow-hidden rounded-brand-md border border-gold/10 bg-white shadow-gold-sm transition-shadow hover:shadow-gold-md"
     >
       {/* Image area */}

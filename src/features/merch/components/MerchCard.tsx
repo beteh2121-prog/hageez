@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingBag } from 'lucide-react';
 import type { Merch } from '@/types';
+import { productPath } from '@/lib/fourthwall/routes';
 import { formatPrice } from '@/lib/utils/formatPrice';
 
 interface MerchCardProps {
@@ -13,7 +14,7 @@ export default function MerchCard({ product }: MerchCardProps) {
 
   return (
     <Link
-      href={`/shop/${product.id}`}
+      href={productPath(product.slug)}
       className="group block overflow-hidden rounded-brand-md border border-gold/10 bg-white shadow-gold-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-gold-md"
     >
       <div className="relative aspect-square overflow-hidden bg-cream-dark">

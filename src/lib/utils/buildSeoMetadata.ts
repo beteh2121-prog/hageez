@@ -1,4 +1,5 @@
 import type { Download, KdpBook, Merch } from '@/types';
+import { productPath } from '@/lib/fourthwall/routes';
 
 const SITE_NAME = 'Ethiopian Orthodox Heritage';
 
@@ -17,7 +18,7 @@ export function buildMerchSeo(product: Merch, siteUrl: string): SeoMetadata {
     description: product.seo_description ?? product.description?.slice(0, 155) ?? '',
     keywords: product.seo_keywords ?? product.tags,
     ogImage: product.og_image_url ?? product.images[0]?.url ?? '',
-    canonicalUrl: `${siteUrl}/shop/${product.id}`,
+    canonicalUrl: `${siteUrl}${productPath(product.slug)}`,
     focusKeyword: product.focus_keyword ?? '',
   };
 }

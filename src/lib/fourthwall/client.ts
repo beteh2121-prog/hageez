@@ -39,6 +39,8 @@ export interface FourthwallStorefrontVariant {
   compareAtPrice?: FourthwallStorefrontMoney;
   attributes?: FourthwallVariantAttributes;
   images?: FourthwallStorefrontImage[];
+  // UNLIMITED | LIMITED (with inStock)
+  stock?: { type?: string; inStock?: number };
 }
 
 export interface FourthwallStorefrontProduct {
@@ -105,13 +107,14 @@ export async function fetchAllFourthwallProducts(): Promise<FourthwallStorefront
 }
 
 export async function fetchFourthwallProductBySlug(
-  slug: string
+  slug: string,
+  currency: string = 'USD'
 ): Promise<FourthwallStorefrontProduct | null> {
   const token = process.env.FOURTHWALL_STOREFRONT_TOKEN;
   if (!token || !slug) return null;
   try {
     const response = await fetch(
-      `${STOREFRONT_API_BASE}/products/${encodeURIComponent(slug)}?storefront_token=${token}`,
+      `${STOREFRONT_API_BASE}/products/${encodeURIComponent(slug)}?storefront_token=${token}&currency=${encodeURIComponent(currency)}`,
       { next: { revalidate: 300, tags: [`product-${slug}`, 'fw-products'] } }
     );
     if (!response.ok) return null;
