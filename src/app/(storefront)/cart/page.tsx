@@ -2,38 +2,60 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { Loader2, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { useCartStore } from '@/store/cartStore';
-import { buildFourthwallCheckoutUrl, getFourthwallStoreUrl } from '@/lib/fourthwall/checkout';
+import { useCart, useCartMutation, useCheckout } from '@/hooks/useCart';
+import { CART_MAX_LINE_QUANTITY } from '@/lib/fourthwall/cart-types';
 import PriceTag from '@/components/shared/PriceTag';
 import EmptyState from '@/components/shared/EmptyState';
 
 export default function CartPage() {
-  const items = useCartStore((state) => state.items);
-  const removeItem = useCartStore((state) => state.removeItem);
-  const updateQuantity = useCartStore((state) => state.updateQuantity);
-  const total = useCartStore((state) => state.total());
+  const { data: cart, isLoading, isError, refetch } = useCart();
+  const cartMutation = useCartMutation();
+  const checkout = useCheckout();
 
-  const checkoutItems = items.filter((item) => item.variant_id);
-  const legacyItems = items.filter((item) => !item.variant_id);
-
-  function handleCheckout() {
-    const url = buildFourthwallCheckoutUrl(
-      getFourthwallStoreUrl(),
-      checkoutItems.map((item) => ({ variantId: item.variant_id as string, quantity: item.quantity }))
+  function updateQuantity(variantId: string, quantity: number) {
+    cartMutation.mutate(
+      { action: 'set', variantId, quantity },
+      { onError: (error) => toast.error(error.message) }
     );
-    if (!url) {
-      toast.error(
-        checkoutItems.length === 0
-          ? 'Nothing in your cart can be checked out yet.'
-          : 'Checkout is not configured yet — the Fourthwall store URL is missing.'
-      );
-      return;
-    }
-    window.location.href = url;
   }
 
-  if (items.length === 0) {
+  function removeLine(variantId: string) {
+    cartMutation.mutate(
+      { action: 'remove', variantId },
+      { onError: (error) => toast.error(error.message) }
+    );
+  }
+
+  function handleCheckout() {
+    checkout.mutate({}, { onError: (error) => toast.error(error.message) });
+  }
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-16">
+        <h1 className="font-serif text-3xl text-brown">Your Cart</h1>
+        <div className="mt-10 flex justify-center text-gold" role="status" aria-label="Loading your cart">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isError || !cart) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-16">
+        <h1 className="font-serif text-3xl text-brown">Your Cart</h1>
+        <p className="mt-6 text-charcoal/70">We couldn&apos;t load your cart right now.</p>
+        <button type="button" onClick={() => refetch()} className="btn-primary mt-4">
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  if (cart.lines.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16">
         <h1 className="font-serif text-3xl text-brown">Your Cart</h1>
@@ -54,55 +76,86 @@ export default function CartPage() {
       <h1 className="font-serif text-3xl text-brown">Your Cart</h1>
 
       <div className="mt-8 flex flex-col gap-4">
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center gap-4 rounded-brand-md border border-gold/10 bg-white p-4">
-            {item.image && (
-              <Image src={item.image} alt={item.title} width={64} height={64} className="rounded-brand object-cover" />
-            )}
-            <div className="flex-1">
-              <p className="font-serif text-brown">{item.title}</p>
-              <PriceTag cents={item.price_cents} />
-              {!item.variant_id && (
-                <p className="mt-1 text-xs text-crimson">
-                  Saved before an update — remove it and add it again from its product page.
-                </p>
+        {cart.lines.map((line) => {
+          const maxQuantity = Math.min(CART_MAX_LINE_QUANTITY, line.stockLimit ?? CART_MAX_LINE_QUANTITY);
+          const title = line.variantLabel ? `${line.productName} — ${line.variantLabel}` : line.productName;
+
+          return (
+            <div
+              key={line.variantId}
+              className="flex items-center gap-4 rounded-brand-md border border-gold/10 bg-white p-4"
+            >
+              {line.imageUrl && (
+                <Image
+                  src={line.imageUrl}
+                  alt={line.productName}
+                  width={64}
+                  height={64}
+                  className="rounded-brand object-cover"
+                />
               )}
+
+              <div className="min-w-0 flex-1">
+                <p className="font-serif text-brown">{title}</p>
+                <PriceTag cents={line.unitPriceCents} currency={cart.currency} />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateQuantity(line.variantId, line.quantity - 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-brand border border-gold/30 text-charcoal hover:border-gold"
+                  aria-label={`Decrease quantity of ${title}`}
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <span className="w-6 text-center text-sm font-medium" aria-live="polite">
+                  {line.quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => updateQuantity(line.variantId, line.quantity + 1)}
+                  disabled={line.quantity >= maxQuantity}
+                  className="flex h-8 w-8 items-center justify-center rounded-brand border border-gold/30 text-charcoal hover:border-gold disabled:opacity-40"
+                  aria-label={`Increase quantity of ${title}`}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => removeLine(line.variantId)}
+                className="text-sm text-red-600 hover:underline"
+              >
+                Remove
+              </button>
             </div>
-            <input
-              type="number"
-              min={1}
-              max={99}
-              value={item.quantity}
-              onChange={(e) => updateQuantity(item.id, Number(e.target.value))}
-              className="w-16 rounded-brand border border-gold/30 px-2 py-1 text-center text-sm"
-              aria-label={`Quantity for ${item.title}`}
-            />
-            <button type="button" onClick={() => removeItem(item.id)} className="text-sm text-red-600 hover:underline">
-              Remove
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-8 border-t border-gold/20 pt-4">
         <div className="flex items-center justify-between">
-          <p className="font-serif text-xl text-brown">Total</p>
-          <PriceTag cents={total} />
+          <p className="font-serif text-xl text-brown">Subtotal</p>
+          <PriceTag cents={cart.subtotalCents} currency={cart.currency} />
         </div>
+        <p className="mt-1 text-right text-xs text-charcoal/50">Shipping and taxes are calculated at checkout.</p>
 
         <button
           type="button"
           onClick={handleCheckout}
-          disabled={checkoutItems.length === 0}
-          className="btn-primary mt-4 w-full disabled:opacity-50"
+          disabled={checkout.isPending || checkout.isSuccess}
+          className="btn-primary mt-4 inline-flex w-full items-center justify-center gap-2 disabled:opacity-60"
         >
-          Checkout
+          {checkout.isPending || checkout.isSuccess ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Taking you to checkout…
+            </>
+          ) : (
+            'Checkout'
+          )}
         </button>
-        {legacyItems.length > 0 && (
-          <p className="mt-2 text-center text-xs text-charcoal/50">
-            {legacyItems.length} item(s) above will be left out of checkout until re-added.
-          </p>
-        )}
         <p className="mt-2 text-center text-xs text-charcoal/40">
           You&apos;ll complete payment on Fourthwall&apos;s secure checkout.
         </p>

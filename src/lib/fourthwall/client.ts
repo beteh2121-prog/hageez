@@ -112,7 +112,7 @@ export async function fetchFourthwallProductBySlug(
   try {
     const response = await fetch(
       `${STOREFRONT_API_BASE}/products/${encodeURIComponent(slug)}?storefront_token=${token}`,
-      { next: { revalidate: 300 } }
+      { next: { revalidate: 300, tags: [`product-${slug}`, 'fw-products'] } }
     );
     if (!response.ok) return null;
     return (await response.json()) as FourthwallStorefrontProduct;

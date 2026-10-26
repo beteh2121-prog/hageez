@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { ShoppingBag, Check, Minus, Plus } from 'lucide-react';
+import { ShoppingBag, Check, Minus, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useCartStore } from '@/store/cartStore';
-import { buildFourthwallCheckoutUrl, getFourthwallStoreUrl } from '@/lib/fourthwall/checkout';
+import { useCartMutation, useCheckout } from '@/hooks/useCart';
 import type { FourthwallVariantAttributes } from '@/lib/fourthwall/client';
 
 export interface SelectorVariant {
@@ -15,11 +14,7 @@ export interface SelectorVariant {
 }
 
 interface VariantSelectorProps {
-  fourthwallId: string;
-  productTitle: string;
-  productImage?: string;
   variants: SelectorVariant[];
-  storeUrl: string;
 }
 
 // Pulls Color / Size out of a variant when Fourthwall provides them.
@@ -34,15 +29,9 @@ function optionsOf(variant: SelectorVariant): Record<string, string> {
   return options;
 }
 
-export default function VariantSelector({
-  fourthwallId,
-  productTitle,
-  productImage,
-  variants,
-  storeUrl,
-}: VariantSelectorProps) {
-  const addItem = useCartStore((state) => state.addItem);
-  const resolvedStoreUrl = getFourthwallStoreUrl() || storeUrl;
+export default function VariantSelector({ variants }: VariantSelectorProps) {
+  const cartMutation = useCartMutation();
+  const checkout = useCheckout();
 
   const groups: Record<string, string[]> = {};
   for (const variant of variants) {
@@ -80,31 +69,25 @@ export default function VariantSelector({
 
   function handleAddToCart() {
     if (!selectedVariant) return;
-    addItem({
-      id: selectedVariant.id,
-      variant_id: selectedVariant.id,
-      fourthwall_id: fourthwallId,
-      title: variants.length > 1 ? `${productTitle} — ${label(selectedVariant)}` : productTitle,
-      price_cents: Math.round(selectedVariant.unitPrice.value * 100),
-      quantity,
-      image: productImage,
-      type: 'merch',
-    });
-    setAdded(true);
-    toast.success(`${productTitle} added to cart`);
-    setTimeout(() => setAdded(false), 2000);
+    cartMutation.mutate(
+      { action: 'add', variantId: selectedVariant.id, quantity },
+      {
+        onSuccess: () => {
+          setAdded(true);
+          toast.success('Added to cart');
+          setTimeout(() => setAdded(false), 2000);
+        },
+        onError: (error) => toast.error(error.message),
+      }
+    );
   }
 
   function handleBuyNow() {
     if (!selectedVariant) return;
-    const url = buildFourthwallCheckoutUrl(resolvedStoreUrl, [
+    checkout.mutate(
       { variantId: selectedVariant.id, quantity },
-    ]);
-    if (!url) {
-      toast.error('Checkout is not configured yet — the Fourthwall store URL is missing.');
-      return;
-    }
-    window.location.href = url;
+      { onError: (error) => toast.error(error.message) }
+    );
   }
 
   if (!selectedVariant) {
@@ -190,8 +173,17 @@ export default function VariantSelector({
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <button type="button" onClick={handleAddToCart} className="btn-secondary flex-1 gap-2">
-          {added ? (
+        <button
+          type="button"
+          onClick={handleAddToCart}
+          disabled={cartMutation.isPending}
+          className="btn-secondary flex-1 gap-2 disabled:opacity-60"
+        >
+          {cartMutation.isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Adding…
+            </>
+          ) : added ? (
             <>
               <Check className="h-4 w-4" /> Added to Cart
             </>
@@ -201,8 +193,19 @@ export default function VariantSelector({
             </>
           )}
         </button>
-        <button type="button" onClick={handleBuyNow} className="btn-primary flex-1">
-          Buy Now
+        <button
+          type="button"
+          onClick={handleBuyNow}
+          disabled={checkout.isPending || checkout.isSuccess}
+          className="btn-primary inline-flex flex-1 items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {checkout.isPending || checkout.isSuccess ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading checkout…
+            </>
+          ) : (
+            'Buy Now'
+          )}
         </button>
       </div>
 

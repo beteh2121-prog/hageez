@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
-import { useCartStore } from '@/store/cartStore';
+import { useClearCart } from '@/hooks/useCart';
 import type { Profile } from '@/types';
 import type { LoginInput, SignupInput, UpdateProfileInput } from '@/lib/validations/auth';
 
@@ -81,7 +81,7 @@ export function useSignOut() {
   const supabase = createClient();
   const queryClient = useQueryClient();
   const router = useRouter();
-  const clearCart = useCartStore((state) => state.clearCart);
+  const clearCart = useClearCart();
 
   return useMutation({
     mutationFn: async () => {
@@ -89,7 +89,7 @@ export function useSignOut() {
       if (error) throw error;
     },
     onSuccess: () => {
-      clearCart();
+      clearCart.mutate();
       queryClient.invalidateQueries({ queryKey: ['session'] });
       router.push('/');
     },

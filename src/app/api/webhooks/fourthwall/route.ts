@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceClient } from '@/lib/supabase/service';
 import { getSignedUrl } from '@/lib/supabase/storage';
@@ -89,6 +90,8 @@ interface FourthwallDigitalFile {
 interface FourthwallProductData {
   id: string;
   name?: string;
+  // Fourthwall's own product slug — what the Storefront API looks products up by.
+  slug?: string;
   description?: string;
   variants?: { unitPrice?: FourthwallMoney }[];
   images?: FourthwallImage[];
@@ -180,6 +183,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     await handleEvent(supabase, payload);
+    refreshStorefrontCache(payload);
     if (logRow) {
       await supabase
         .from('webhook_logs')
@@ -202,6 +206,35 @@ export async function POST(request: Request): Promise<NextResponse> {
   // Always 200 on a verified, parsed request — Fourthwall should never
   // retry on our internal processing errors.
   return NextResponse.json({ received: true });
+}
+
+/**
+ * Drops cached Fourthwall data so product/collection edits show up right
+ * away instead of waiting for the ISR window. Best-effort and never throws:
+ * on a Worker without an incremental-cache binding this is a harmless no-op.
+ */
+function refreshStorefrontCache(payload: FourthwallEvent): void {
+  try {
+    const slug = typeof payload.data.slug === 'string' ? payload.data.slug : '';
+
+    switch (payload.type) {
+      case 'PRODUCT_CREATED':
+      case 'PRODUCT_UPDATED':
+        if (slug) revalidateTag(`product-${slug}`);
+        revalidateTag('fw-products');
+        revalidatePath('/shop');
+        revalidatePath('/');
+        return;
+      case 'COLLECTION_UPDATED':
+        revalidateTag('fw-products');
+        revalidatePath('/shop');
+        return;
+      default:
+        return;
+    }
+  } catch (error) {
+    console.warn('Storefront cache revalidation skipped:', error);
+  }
 }
 
 async function handleEvent(supabase: SupabaseClient, payload: FourthwallEvent): Promise<void> {
@@ -229,7 +262,7 @@ function isDigitalProduct(data: FourthwallProductData): boolean {
 }
 
 async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallProductData): Promise<void> {
-  const slug = slugify(data.name ?? '');
+  const slug = data.slug || slugify(data.name ?? '');
   const priceCents = Math.round((data.variants?.[0]?.unitPrice?.value ?? 0) * 100);
 
   if (isDigitalProduct(data)) {

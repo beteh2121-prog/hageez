@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/service';
 import { sanityClient } from '@/lib/sanity/client';
+import { resolveCheckoutOrigin } from '@/lib/fourthwall/shop';
 
 interface CheckResult {
   name: string;
@@ -98,6 +99,28 @@ async function checkCatalog(): Promise<CheckResult> {
   }
 }
 
+async function checkFourthwallCheckout(): Promise<CheckResult> {
+  const { origin, source } = await resolveCheckoutOrigin();
+
+  if (!origin) {
+    return {
+      name: 'Fourthwall checkout domain',
+      ok: false,
+      detail:
+        'Could not determine the shop domain. Set FOURTHWALL_STOREFRONT_TOKEN as a Worker secret (preferred), or FOURTHWALL_STORE_URL as a fallback.',
+    };
+  }
+
+  return {
+    name: 'Fourthwall checkout domain',
+    ok: true,
+    detail:
+      source === 'fourthwall-api'
+        ? `${origin} (read live from Fourthwall).`
+        : `${origin} (from the FOURTHWALL_STORE_URL fallback — add FOURTHWALL_STOREFRONT_TOKEN to read it live).`,
+  };
+}
+
 async function checkSanity(): Promise<CheckResult> {
   try {
     const result = await sanityClient.fetch<number>('count(*[_type == "post"])');
@@ -112,8 +135,12 @@ async function checkSanity(): Promise<CheckResult> {
 }
 
 export async function GET(): Promise<NextResponse> {
-  const [catalogCheck, sanityCheck] = await Promise.all([checkCatalog(), checkSanity()]);
-  const checks = [checkBuildConfig(), checkRuntimeSecrets(), catalogCheck, sanityCheck];
+  const [catalogCheck, sanityCheck, checkoutCheck] = await Promise.all([
+    checkCatalog(),
+    checkSanity(),
+    checkFourthwallCheckout(),
+  ]);
+  const checks = [checkBuildConfig(), checkRuntimeSecrets(), checkoutCheck, catalogCheck, sanityCheck];
   const allOk = checks.every((check) => check.ok);
 
   return NextResponse.json(

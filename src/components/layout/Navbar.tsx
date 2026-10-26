@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Menu, ShoppingBag, X } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { createClient } from '@/lib/supabase/client';
-import { useCartStore } from '@/store/cartStore';
+import { useCart } from '@/hooks/useCart';
 import { cn } from '@/lib/utils/cn';
 import type { SiteSettings, SitePage } from '@/lib/supabase/settings';
 
@@ -25,7 +25,8 @@ interface NavbarProps {
 
 export default function Navbar({ siteSettings, extraPages }: NavbarProps) {
   const pathname = usePathname();
-  const itemCount = useCartStore((state) => state.itemCount());
+  const { data: cart } = useCart();
+  const itemCount = cart?.totalQuantity ?? 0;
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 

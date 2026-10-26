@@ -7,7 +7,8 @@ import { createStaticClient } from '@/lib/supabase/static';
 import { buildMerchSeo } from '@/lib/utils/buildSeoMetadata';
 import { buildProductSchema } from '@/lib/utils/buildSchemaOrg';
 import { findFourthwallProduct } from '@/lib/fourthwall/client';
-import { buildFourthwallProductUrl, getFourthwallStoreUrl } from '@/lib/fourthwall/checkout';
+import { buildFourthwallProductUrl } from '@/lib/fourthwall/checkout';
+import { getCheckoutOrigin } from '@/lib/fourthwall/shop';
 import SchemaScript from '@/components/shared/SchemaScript';
 import MerchCard from '@/features/merch/components/MerchCard';
 import ProductGallery from '@/features/merch/components/ProductGallery';
@@ -59,8 +60,9 @@ export default async function ProductPage({ params }: { params: { id: string } }
   // we degrade to a plain link to the product on the Fourthwall shop.
   const fwProduct = await findFourthwallProduct({ id: product.fourthwall_id, slug: product.slug });
 
-  const storeUrl = getFourthwallStoreUrl() || process.env.FOURTHWALL_STORE_URL || '';
-  const fallbackUrl = buildFourthwallProductUrl(storeUrl, fwProduct?.slug ?? product.slug);
+  // Ask Fourthwall for the real shop domain rather than trusting an env var.
+  const checkoutOrigin = await getCheckoutOrigin();
+  const fallbackUrl = buildFourthwallProductUrl(checkoutOrigin, fwProduct?.slug ?? product.slug);
 
   const galleryImages = fwProduct?.images?.length
     ? fwProduct.images.map((img) => ({ url: img.transformedUrl || img.url, alt: product.title }))
@@ -121,13 +123,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
 
           <div className="border-t border-gold/10 pt-4">
             {canBuyHere ? (
-              <VariantSelector
-                fourthwallId={product.fourthwall_id}
-                productTitle={product.title}
-                productImage={galleryImages[0]?.url}
-                variants={variants}
-                storeUrl={storeUrl}
-              />
+              <VariantSelector variants={variants} />
             ) : (
               <div className="flex flex-col gap-3">
                 <p className="font-serif text-3xl font-medium text-gold">
