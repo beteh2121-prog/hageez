@@ -9,10 +9,11 @@ import {
   removeFromCart,
 } from '@/lib/fourthwall/cart';
 import { CART_COOKIE, CART_COOKIE_MAX_AGE } from '@/lib/fourthwall/cart-cookie';
+import { normalizeStoreCurrency } from '@/lib/fourthwall/routes';
 import { CartMutationSchema, type CartMutationInput } from '@/lib/fourthwall/cart-schemas';
 import {
   CART_MAX_LINE_QUANTITY,
-  EMPTY_CART,
+  emptyCartFor,
   type CartErrorBody,
   type CartView,
 } from '@/lib/fourthwall/cart-types';
@@ -49,16 +50,24 @@ function errorResponse(error: unknown): NextResponse<CartErrorBody> {
   );
 }
 
-async function loadOrCreateCart(cartId: string | undefined): Promise<CartView> {
-  if (cartId) {
-    const existing = await getCart(cartId);
-    if (existing) return existing;
-  }
-  return createCart([]);
+function currencyOf(request: Request): string {
+  return normalizeStoreCurrency(new URL(request.url).searchParams.get('currency'));
 }
 
-async function applyMutation(cartId: string | undefined, mutation: CartMutationInput): Promise<CartView> {
-  const cart = await loadOrCreateCart(cartId);
+async function loadOrCreateCart(cartId: string | undefined, currency: string): Promise<CartView> {
+  if (cartId) {
+    const existing = await getCart(cartId, currency);
+    if (existing) return existing;
+  }
+  return createCart([], currency);
+}
+
+async function applyMutation(
+  cartId: string | undefined,
+  mutation: CartMutationInput,
+  currency: string
+): Promise<CartView> {
+  const cart = await loadOrCreateCart(cartId, currency);
   const id = cart.id;
   if (!id) {
     throw new FourthwallCartError('Could not start a cart. Please try again.', 502, 'UPSTREAM_ERROR');
@@ -71,31 +80,32 @@ async function applyMutation(cartId: string | undefined, mutation: CartMutationI
       const room = CART_MAX_LINE_QUANTITY - (line?.quantity ?? 0);
       const delta = Math.min(mutation.quantity, room);
       if (delta <= 0) return cart;
-      return addToCart(id, [{ variantId: mutation.variantId, quantity: delta }]);
+      return addToCart(id, [{ variantId: mutation.variantId, quantity: delta }], currency);
     }
     case 'set': {
       if (mutation.quantity === 0) {
         if (!line) return cart;
-        return removeFromCart(id, [{ variantId: line.variantId, quantity: line.quantity }]);
+        return removeFromCart(id, [{ variantId: line.variantId, quantity: line.quantity }], currency);
       }
-      if (!line) return addToCart(id, [{ variantId: mutation.variantId, quantity: mutation.quantity }]);
+      if (!line) return addToCart(id, [{ variantId: mutation.variantId, quantity: mutation.quantity }], currency);
       if (line.quantity === mutation.quantity) return cart;
-      return changeCart(id, [{ variantId: mutation.variantId, quantity: mutation.quantity }]);
+      return changeCart(id, [{ variantId: mutation.variantId, quantity: mutation.quantity }], currency);
     }
     case 'remove': {
       if (!line) return cart;
-      return removeFromCart(id, [{ variantId: line.variantId, quantity: line.quantity }]);
+      return removeFromCart(id, [{ variantId: line.variantId, quantity: line.quantity }], currency);
     }
   }
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const currency = currencyOf(request);
   const cartId = cookies().get(CART_COOKIE)?.value;
-  if (!cartId) return NextResponse.json(EMPTY_CART);
+  if (!cartId) return NextResponse.json(emptyCartFor(currency));
 
   try {
-    const cart = await getCart(cartId);
-    if (!cart) return clearCartCookie(NextResponse.json(EMPTY_CART));
+    const cart = await getCart(cartId, currency);
+    if (!cart) return clearCartCookie(NextResponse.json(emptyCartFor(currency)));
     return NextResponse.json(cart);
   } catch (error) {
     return errorResponse(error);
@@ -113,7 +123,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const cart = await applyMutation(cookies().get(CART_COOKIE)?.value, parsed.data);
+    const cart = await applyMutation(cookies().get(CART_COOKIE)?.value, parsed.data, currencyOf(request));
     return withCartCookie(NextResponse.json(cart), cart);
   } catch (error) {
     return errorResponse(error);
@@ -121,6 +131,6 @@ export async function POST(request: Request): Promise<NextResponse> {
 }
 
 /** Empties the browser's cart (used on sign-out). The Fourthwall cart simply expires. */
-export async function DELETE(): Promise<NextResponse> {
-  return clearCartCookie(NextResponse.json(EMPTY_CART));
+export async function DELETE(request: Request): Promise<NextResponse> {
+  return clearCartCookie(NextResponse.json(emptyCartFor(currencyOf(request))));
 }

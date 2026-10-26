@@ -1,15 +1,20 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCurrency } from '@/providers/CurrencyProvider';
 import {
   CART_MAX_LINE_QUANTITY,
-  EMPTY_CART,
   type CartErrorBody,
   type CartMutation,
   type CartView,
 } from '@/lib/fourthwall/cart-types';
 
-export const CART_QUERY_KEY = ['cart'] as const;
+export const CART_QUERY_ROOT = ['cart'] as const;
+
+/** One cached cart view per currency (the cart itself is the same on Fourthwall). */
+export function cartQueryKey(currency: string) {
+  return [...CART_QUERY_ROOT, currency] as const;
+}
 
 export class CartRequestError extends Error {
   readonly code: string;
@@ -32,8 +37,10 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
-async function fetchCart(): Promise<CartView> {
-  return parseResponse<CartView>(await fetch('/api/cart', { cache: 'no-store' }));
+async function fetchCart(currency: string): Promise<CartView> {
+  return parseResponse<CartView>(
+    await fetch(`/api/cart?currency=${encodeURIComponent(currency)}`, { cache: 'no-store' })
+  );
 }
 
 /** Instant UI feedback for quantity changes / removals; the server reply replaces it. */
@@ -58,36 +65,46 @@ export function applyOptimistic(cart: CartView, mutation: CartMutation): CartVie
 }
 
 export function useCart() {
+  const { currency } = useCurrency();
   return useQuery({
-    queryKey: CART_QUERY_KEY,
-    queryFn: fetchCart,
+    queryKey: cartQueryKey(currency),
+    queryFn: () => fetchCart(currency),
     staleTime: 15_000,
+    // Keep showing the old numbers while a new currency loads (no badge flicker).
+    placeholderData: keepPreviousData,
   });
 }
 
 export function useCartMutation() {
   const queryClient = useQueryClient();
+  const { currency } = useCurrency();
+  const key = cartQueryKey(currency);
 
   return useMutation<CartView, CartRequestError, CartMutation, { previous: CartView | undefined }>({
     mutationFn: async (mutation) =>
       parseResponse<CartView>(
-        await fetch('/api/cart', {
+        await fetch(`/api/cart?currency=${encodeURIComponent(currency)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(mutation),
         })
       ),
     onMutate: async (mutation) => {
-      await queryClient.cancelQueries({ queryKey: CART_QUERY_KEY });
-      const previous = queryClient.getQueryData<CartView>(CART_QUERY_KEY);
-      if (previous) queryClient.setQueryData(CART_QUERY_KEY, applyOptimistic(previous, mutation));
+      await queryClient.cancelQueries({ queryKey: CART_QUERY_ROOT });
+      const previous = queryClient.getQueryData<CartView>(key);
+      if (previous) queryClient.setQueryData(key, applyOptimistic(previous, mutation));
       return { previous };
     },
     onError: (_error, _mutation, context) => {
-      if (context?.previous) queryClient.setQueryData(CART_QUERY_KEY, context.previous);
+      if (context?.previous) queryClient.setQueryData(key, context.previous);
     },
     onSuccess: (cart) => {
-      queryClient.setQueryData(CART_QUERY_KEY, cart);
+      queryClient.setQueryData(key, cart);
+      // Other currencies' cached views are now out of date.
+      queryClient.invalidateQueries({
+        queryKey: CART_QUERY_ROOT,
+        predicate: (query) => query.queryKey[1] !== currency,
+      });
     },
   });
 }
@@ -99,10 +116,11 @@ interface CheckoutVariables {
 }
 
 export function useCheckout() {
+  const { currency } = useCurrency();
   return useMutation<string, CartRequestError, CheckoutVariables>({
     mutationFn: async (variables) => {
       const data = await parseResponse<{ checkoutUrl: string }>(
-        await fetch('/api/cart/checkout', {
+        await fetch(`/api/cart/checkout?currency=${encodeURIComponent(currency)}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(variables),
@@ -119,11 +137,16 @@ export function useCheckout() {
 /** Clears the saved cart (called on sign-out). */
 export function useClearCart() {
   const queryClient = useQueryClient();
+  const { currency } = useCurrency();
 
   return useMutation<CartView, CartRequestError, void>({
-    mutationFn: async () => parseResponse<CartView>(await fetch('/api/cart', { method: 'DELETE' })),
-    onSuccess: () => {
-      queryClient.setQueryData(CART_QUERY_KEY, EMPTY_CART);
+    mutationFn: async () =>
+      parseResponse<CartView>(
+        await fetch(`/api/cart?currency=${encodeURIComponent(currency)}`, { method: 'DELETE' })
+      ),
+    onSuccess: (emptyCart) => {
+      queryClient.setQueryData(cartQueryKey(currency), emptyCart);
+      queryClient.invalidateQueries({ queryKey: CART_QUERY_ROOT });
     },
   });
 }

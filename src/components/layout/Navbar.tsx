@@ -7,6 +7,9 @@ import { Menu, ShoppingBag, X } from 'lucide-react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { createClient } from '@/lib/supabase/client';
 import { useCart } from '@/hooks/useCart';
+import { useCartDrawer } from '@/store/cartDrawerStore';
+import CartDrawer from '@/components/cart/CartDrawer';
+import CurrencySelector from '@/components/layout/CurrencySelector';
 import { cn } from '@/lib/utils/cn';
 import type { SiteSettings, SitePage } from '@/lib/supabase/settings';
 
@@ -27,6 +30,7 @@ export default function Navbar({ siteSettings, extraPages }: NavbarProps) {
   const pathname = usePathname();
   const { data: cart } = useCart();
   const itemCount = cart?.totalQuantity ?? 0;
+  const openCart = useCartDrawer((state) => state.open);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -72,14 +76,20 @@ export default function Navbar({ siteSettings, extraPages }: NavbarProps) {
         </nav>
 
         <div className="flex items-center gap-4">
-          <Link href="/cart" className="relative text-cream/70 hover:text-gold" aria-label="Cart">
+          <CurrencySelector />
+          <button
+            type="button"
+            onClick={openCart}
+            className="relative text-cream/70 hover:text-gold"
+            aria-label={`Open cart${itemCount > 0 ? `, ${itemCount} items` : ''}`}
+          >
             <ShoppingBag className="h-5 w-5" />
             {itemCount > 0 && (
               <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-gold text-[10px] font-semibold text-brown-dark">
                 {itemCount}
               </span>
             )}
-          </Link>
+          </button>
           {isAuthenticated ? (
             <Link href="/account" className="hidden text-sm text-cream/60 hover:text-cream md:block">
               Account
@@ -130,9 +140,16 @@ export default function Navbar({ siteSettings, extraPages }: NavbarProps) {
               ))}
             </nav>
             <div className="mt-auto flex flex-col gap-3 border-t border-white/10 pt-4">
-              <Link href="/cart" onClick={() => setDrawerOpen(false)} className="text-cream/60">
+              <button
+                type="button"
+                onClick={() => {
+                  setDrawerOpen(false);
+                  openCart();
+                }}
+                className="text-left text-cream/60"
+              >
                 Cart ({itemCount})
-              </Link>
+              </button>
               {isAuthenticated ? (
                 <Link href="/account" onClick={() => setDrawerOpen(false)} className="text-cream/60">
                   Account
@@ -146,6 +163,8 @@ export default function Navbar({ siteSettings, extraPages }: NavbarProps) {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      <CartDrawer />
     </header>
   );
 }

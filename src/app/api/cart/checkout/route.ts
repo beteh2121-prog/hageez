@@ -5,6 +5,7 @@ import { CheckoutRequestSchema } from '@/lib/fourthwall/cart-schemas';
 import type { CartErrorBody } from '@/lib/fourthwall/cart-types';
 import { getCheckoutOrigin } from '@/lib/fourthwall/shop';
 import { CART_COOKIE } from '@/lib/fourthwall/cart-cookie';
+import { normalizeStoreCurrency } from '@/lib/fourthwall/routes';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   const parsed = CheckoutRequestSchema.safeParse(body ?? {});
   if (!parsed.success) return fail('Invalid checkout request.', 'INVALID_REQUEST', 400);
 
+  const requestedCurrency = normalizeStoreCurrency(new URL(request.url).searchParams.get('currency'));
+
   try {
     const origin = await getCheckoutOrigin();
     if (!origin) {
@@ -33,15 +36,18 @@ export async function POST(request: Request): Promise<NextResponse> {
     let currency: string | undefined;
 
     if (parsed.data.variantId) {
-      const cart = await createCart([{ variantId: parsed.data.variantId, quantity: parsed.data.quantity }]);
+      const cart = await createCart(
+        [{ variantId: parsed.data.variantId, quantity: parsed.data.quantity }],
+        requestedCurrency
+      );
       cartId = cart.id;
-      currency = cart.currency;
+      currency = requestedCurrency;
     } else {
       const savedId = cookies().get(CART_COOKIE)?.value;
-      const cart = savedId ? await getCart(savedId) : null;
+      const cart = savedId ? await getCart(savedId, requestedCurrency) : null;
       if (!cart || cart.lines.length === 0) return fail('Your cart is empty.', 'EMPTY_CART', 400);
       cartId = cart.id;
-      currency = cart.currency;
+      currency = requestedCurrency;
     }
 
     if (!cartId) return fail('Could not start checkout. Please try again.', 'UPSTREAM_ERROR', 502);

@@ -59,7 +59,7 @@ export interface CartRequestItem {
 }
 
 // ── Pure reshaping (unit-tested) ─────────────────────────────────────────
-export function reshapeCart(raw: RawCart): CartView {
+export function reshapeCart(raw: RawCart, fallbackCurrency: string = CART_CURRENCY): CartView {
   const lines: CartLine[] = [];
 
   for (const item of raw.items ?? []) {
@@ -94,7 +94,7 @@ export function reshapeCart(raw: RawCart): CartView {
     lines,
     totalQuantity,
     subtotalCents,
-    currency: firstItem?.variant?.unitPrice?.currency ?? CART_CURRENCY,
+    currency: firstItem?.variant?.unitPrice?.currency ?? fallbackCurrency,
   };
 }
 
@@ -126,9 +126,9 @@ function getToken(): string {
 
 async function request(
   path: string,
-  options: { method: 'GET' | 'POST'; body?: unknown }
+  options: { method: 'GET' | 'POST'; currency: string; body?: unknown }
 ): Promise<RawCart> {
-  const url = `${STOREFRONT_API_BASE}${path}?storefront_token=${encodeURIComponent(getToken())}&currency=${CART_CURRENCY}`;
+  const url = `${STOREFRONT_API_BASE}${path}?storefront_token=${encodeURIComponent(getToken())}&currency=${encodeURIComponent(options.currency)}`;
 
   let response: Response;
   try {
@@ -163,36 +163,45 @@ async function request(
   return (parsed ?? {}) as RawCart;
 }
 
-export async function createCart(items: CartRequestItem[] = []): Promise<CartView> {
-  return reshapeCart(await request('/carts', { method: 'POST', body: { items } }));
+export async function createCart(items: CartRequestItem[] = [], currency: string = CART_CURRENCY): Promise<CartView> {
+  return reshapeCart(await request('/carts', { method: 'POST', currency, body: { items } }), currency);
 }
 
 /** Returns null when the cart no longer exists (expired / invalid id). */
-export async function getCart(cartId: string): Promise<CartView | null> {
+export async function getCart(cartId: string, currency: string = CART_CURRENCY): Promise<CartView | null> {
   try {
-    return reshapeCart(await request(`/carts/${encodeURIComponent(cartId)}`, { method: 'GET' }));
+    return reshapeCart(
+      await request(`/carts/${encodeURIComponent(cartId)}`, { method: 'GET', currency }),
+      currency
+    );
   } catch (error) {
     if (error instanceof FourthwallCartError && error.code === 'CART_NOT_FOUND') return null;
     throw error;
   }
 }
 
-export async function addToCart(cartId: string, items: CartRequestItem[]): Promise<CartView> {
+async function mutate(
+  cartId: string,
+  action: 'add' | 'change' | 'remove',
+  items: CartRequestItem[],
+  currency: string
+): Promise<CartView> {
   return reshapeCart(
-    await request(`/carts/${encodeURIComponent(cartId)}/add`, { method: 'POST', body: { items } })
+    await request(`/carts/${encodeURIComponent(cartId)}/${action}`, { method: 'POST', currency, body: { items } }),
+    currency
   );
 }
 
-export async function changeCart(cartId: string, items: CartRequestItem[]): Promise<CartView> {
-  return reshapeCart(
-    await request(`/carts/${encodeURIComponent(cartId)}/change`, { method: 'POST', body: { items } })
-  );
+export function addToCart(cartId: string, items: CartRequestItem[], currency: string = CART_CURRENCY) {
+  return mutate(cartId, 'add', items, currency);
 }
 
-export async function removeFromCart(cartId: string, items: CartRequestItem[]): Promise<CartView> {
-  return reshapeCart(
-    await request(`/carts/${encodeURIComponent(cartId)}/remove`, { method: 'POST', body: { items } })
-  );
+export function changeCart(cartId: string, items: CartRequestItem[], currency: string = CART_CURRENCY) {
+  return mutate(cartId, 'change', items, currency);
+}
+
+export function removeFromCart(cartId: string, items: CartRequestItem[], currency: string = CART_CURRENCY) {
+  return mutate(cartId, 'remove', items, currency);
 }
 
 /**

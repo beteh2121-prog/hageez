@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import type { FourthwallStorefrontProduct } from '@/lib/fourthwall/client';
 import { buildProductView } from '@/lib/fourthwall/product-view';
 import ProductExperience from '@/features/merch/components/ProductExperience';
+import { useCartDrawer } from '@/store/cartDrawerStore';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next/image', () => ({
@@ -41,6 +42,7 @@ describe('ProductExperience', () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
+    useCartDrawer.getState().close();
     window.history.replaceState(null, '', '/USD/product/launch-t-shirt');
     fetchMock.mockReset();
     fetchMock.mockResolvedValue(
@@ -62,7 +64,7 @@ describe('ProductExperience', () => {
     expect(screen.getByRole('radiogroup', { name: 'Color' })).toBeTruthy();
     expect(screen.getByRole('radiogroup', { name: 'Size' })).toBeTruthy();
     expect(screen.getByLabelText('Increase quantity')).toBeTruthy();
-    expect(screen.getByText('$25.00')).toBeTruthy();
+    expect(screen.getByText('$25.00 USD')).toBeTruthy();
   });
 
   it('puts the chosen colour and size in the address bar without leaving the page', () => {
@@ -71,7 +73,7 @@ describe('ProductExperience', () => {
     fireEvent.click(screen.getByRole('radio', { name: /Terracotta/ }));
     expect(window.location.pathname).toBe('/USD/product/launch-t-shirt');
     expect(new URLSearchParams(window.location.search).get('color')).toBe('Terracotta');
-    expect(screen.getByText('$30.00')).toBeTruthy();
+    expect(screen.getByText('$30.00 USD')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('radio', { name: 'S' }));
     expect(new URLSearchParams(window.location.search).get('size')).toBe('S');
@@ -93,8 +95,10 @@ describe('ProductExperience', () => {
     fireEvent.click(screen.getByRole('button', { name: /Add to Cart/ }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // The slide-over cart opens so the shopper sees what they added.
+    await waitFor(() => expect(useCartDrawer.getState().isOpen).toBe(true));
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/cart');
+    expect(url).toBe('/api/cart?currency=USD');
     expect(JSON.parse(String(init.body))).toEqual({ action: 'add', variantId: 'var-terra-s', quantity: 3 });
   });
 

@@ -48,6 +48,18 @@ const config: Config = {
         'gold-sm': '0 1px 3px rgba(198,125,16,0.20)',
         'gold-md': '0 4px 12px rgba(198,125,16,0.25)',
       },
+      keyframes: {
+        'drawer-in': { from: { transform: 'translateX(100%)' }, to: { transform: 'translateX(0)' } },
+        'drawer-out': { from: { transform: 'translateX(0)' }, to: { transform: 'translateX(100%)' } },
+        'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },
+        'fade-out': { from: { opacity: '1' }, to: { opacity: '0' } },
+      },
+      animation: {
+        'drawer-in': 'drawer-in 300ms ease-in-out',
+        'drawer-out': 'drawer-out 200ms ease-in-out forwards',
+        'fade-in': 'fade-in 300ms ease-in-out',
+        'fade-out': 'fade-out 200ms ease-in-out forwards',
+      },
     },
   },
   plugins: [],

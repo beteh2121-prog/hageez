@@ -1,24 +1,23 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { getSupabaseAnonKey, getSupabaseUrl } from '@/lib/supabase/env';
-import { DEFAULT_CURRENCY, SUPPORTED_STORE_CURRENCIES, isKnownCurrency } from '@/lib/fourthwall/routes';
+import { DEFAULT_CURRENCY, isKnownCurrency, isStoreCurrency } from '@/lib/fourthwall/routes';
 
 const PRODUCT_URL = /^\/([A-Za-z]{3})\/product\/([^/]+)\/?$/;
 
 export async function middleware(request: NextRequest) {
-  // /usd/product/x or /EUR/product/x → /USD/product/x, keeping ?color=…&size=…
-  // (the store prices, carts and checks out in one currency).
+  // /eur/product/x → /EUR/product/x; a real but unsupported code (SEK…) → /USD/…
+  // Redirects keep ?color=…&size=… intact.
   const productMatch = PRODUCT_URL.exec(request.nextUrl.pathname);
   const requestedCurrency = productMatch?.[1];
-  if (
-    productMatch &&
-    requestedCurrency &&
-    isKnownCurrency(requestedCurrency) &&
-    !(SUPPORTED_STORE_CURRENCIES.includes(requestedCurrency) && requestedCurrency === requestedCurrency.toUpperCase())
-  ) {
-    const target = request.nextUrl.clone();
-    target.pathname = `/${DEFAULT_CURRENCY}/product/${productMatch[2]}`;
-    return NextResponse.redirect(target, 308);
+  if (productMatch && requestedCurrency && isKnownCurrency(requestedCurrency)) {
+    const upper = requestedCurrency.toUpperCase();
+    const target = isStoreCurrency(upper) ? upper : DEFAULT_CURRENCY;
+    if (target !== requestedCurrency) {
+      const url = request.nextUrl.clone();
+      url.pathname = `/${target}/product/${productMatch[2]}`;
+      return NextResponse.redirect(url, 308);
+    }
   }
 
   const response = NextResponse.next({ request });

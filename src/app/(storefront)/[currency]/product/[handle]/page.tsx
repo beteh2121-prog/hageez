@@ -13,17 +13,14 @@ import {
 } from '@/lib/fourthwall/client';
 import { buildFourthwallProductUrl } from '@/lib/fourthwall/checkout';
 import { buildProductJsonLd, buildProductView } from '@/lib/fourthwall/product-view';
-import {
-  DEFAULT_CURRENCY,
-  SUPPORTED_STORE_CURRENCIES,
-  isKnownCurrency,
-  productPath,
-} from '@/lib/fourthwall/routes';
+import { DEFAULT_CURRENCY, isKnownCurrency, isStoreCurrency, normalizeStoreCurrency, productPath } from '@/lib/fourthwall/routes';
+import { getRelatedProducts } from '@/lib/fourthwall/related';
 import { getCheckoutOrigin } from '@/lib/fourthwall/shop';
 import SchemaScript from '@/components/shared/SchemaScript';
 import MerchCard from '@/features/merch/components/MerchCard';
 import ProductGallery from '@/features/merch/components/ProductGallery';
 import ProductExperience from '@/features/merch/components/ProductExperience';
+import RelatedProducts from '@/features/merch/components/RelatedProducts';
 import type { Merch } from '@/types';
 
 export const revalidate = 300;
@@ -73,7 +70,7 @@ const loadProduct = cache(async (handle: string, currency: string) => {
 });
 
 export async function generateMetadata({ params }: { params: PageParams }): Promise<Metadata> {
-  const { fw, merch } = await loadProduct(params.handle, DEFAULT_CURRENCY);
+  const { fw, merch } = await loadProduct(params.handle, normalizeStoreCurrency(params.currency));
   if (!fw && !merch) return { title: 'Product not found' };
 
   const handle = fw?.slug ?? params.handle;
@@ -102,10 +99,10 @@ export async function generateMetadata({ params }: { params: PageParams }): Prom
 export default async function ProductPage({ params }: { params: PageParams }) {
   const { currency, handle } = params;
 
-  // /usd/… → /USD/…; other real currencies → the one this store prices in.
+  // /eur/… → /EUR/…; a real currency the store doesn't offer → USD.
   if (!isKnownCurrency(currency)) notFound();
   const upper = currency.toUpperCase();
-  if (!SUPPORTED_STORE_CURRENCIES.includes(upper)) permanentRedirect(productPath(handle));
+  if (!isStoreCurrency(upper)) permanentRedirect(productPath(handle, DEFAULT_CURRENCY));
   if (upper !== currency) permanentRedirect(productPath(handle, upper));
 
   const { fw, merch } = await loadProduct(handle, upper);
@@ -120,7 +117,8 @@ export default async function ProductPage({ params }: { params: PageParams }) {
   const checkoutOrigin = await getCheckoutOrigin();
   const fallbackUrl = buildFourthwallProductUrl(checkoutOrigin, fw?.slug ?? handle);
 
-  let related: Merch[] = [];
+  // Same-tag products first (from your catalog), then the rest of the shop.
+  let taggedRelated: Merch[] = [];
   if (merch && merch.tags.length > 0) {
     const { data } = await createStaticClient()
       .from('merch')
@@ -128,9 +126,15 @@ export default async function ProductPage({ params }: { params: PageParams }) {
       .eq('status', 'active')
       .overlaps('tags', merch.tags)
       .neq('id', merch.id)
-      .limit(4);
-    related = (data as Merch[] | null) ?? [];
+      .limit(8);
+    taggedRelated = (data as Merch[] | null) ?? [];
   }
+
+  const relatedProducts = await getRelatedProducts({
+    currentId: fw?.id ?? merch?.fourthwall_id ?? '',
+    currency: upper,
+    preferIds: taggedRelated.map((item) => item.fourthwall_id),
+  });
 
   const descriptionBlock = description ? (
     <div className="border-t border-gold/10 pt-4">
@@ -198,15 +202,20 @@ export default async function ProductPage({ params }: { params: PageParams }) {
         </div>
       )}
 
-      {related.length > 0 && (
-        <div className="mt-20">
-          <h2 className="mb-6 font-serif text-2xl text-brown">You may also like</h2>
-          <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-            {related.map((item) => (
-              <MerchCard key={item.id} product={item} />
-            ))}
-          </div>
-        </div>
+      {relatedProducts.length > 0 ? (
+        <RelatedProducts products={relatedProducts} />
+      ) : (
+        // Fourthwall couldn't be reached: fall back to your own catalog (USD prices).
+        taggedRelated.length > 0 && (
+          <section className="mt-20">
+            <h2 className="mb-6 font-serif text-2xl text-brown">Related products</h2>
+            <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+              {taggedRelated.slice(0, 4).map((item) => (
+                <MerchCard key={item.id} product={item} />
+              ))}
+            </div>
+          </section>
+        )
       )}
     </div>
   );

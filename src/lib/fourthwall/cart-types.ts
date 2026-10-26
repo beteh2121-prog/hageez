@@ -28,13 +28,11 @@ export interface CartView {
   currency: string;
 }
 
-export const EMPTY_CART: CartView = {
-  id: null,
-  lines: [],
-  totalQuantity: 0,
-  subtotalCents: 0,
-  currency: CART_CURRENCY,
-};
+export function emptyCartFor(currency: string = CART_CURRENCY): CartView {
+  return { id: null, lines: [], totalQuantity: 0, subtotalCents: 0, currency };
+}
+
+export const EMPTY_CART: CartView = emptyCartFor();
 
 export type CartMutation =
   | { action: 'add'; variantId: string; quantity: number }

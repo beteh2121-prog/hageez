@@ -80,16 +80,27 @@ function getStorefrontToken(): string {
   return token;
 }
 
-/** Every product in the built-in "all" collection (paginated internally). */
-export async function fetchAllFourthwallProducts(): Promise<FourthwallStorefrontProduct[]> {
+/**
+ * Every product in the built-in "all" collection (paginated internally).
+ * Pass `currency` to price them in that currency and `revalidate` to cache
+ * (used for the storefront; the catalog sync calls it with no options so it
+ * always sees fresh data).
+ */
+export async function fetchAllFourthwallProducts(
+  options: { currency?: string; revalidate?: number } = {}
+): Promise<FourthwallStorefrontProduct[]> {
   const token = getStorefrontToken();
   const products: FourthwallStorefrontProduct[] = [];
   let page = 0;
   let hasNextPage = true;
 
   while (hasNextPage) {
-    const url = `${STOREFRONT_API_BASE}/collections/all/products?storefront_token=${token}&page=${page}&size=50`;
-    const response = await fetch(url);
+    const currencyParam = options.currency ? `&currency=${encodeURIComponent(options.currency)}` : '';
+    const url = `${STOREFRONT_API_BASE}/collections/all/products?storefront_token=${token}&page=${page}&size=50${currencyParam}`;
+    const response = await fetch(
+      url,
+      options.revalidate ? { next: { revalidate: options.revalidate, tags: ['fw-products'] } } : undefined
+    );
 
     if (!response.ok) {
       throw new FourthwallApiError(

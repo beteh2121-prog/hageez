@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import { Check, Loader2, Minus, Plus, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCartMutation, useCheckout } from '@/hooks/useCart';
-import { formatPrice } from '@/lib/utils/formatPrice';
+import { formatPriceWithCode } from '@/lib/utils/formatPrice';
+import { useCartDrawer } from '@/store/cartDrawerStore';
 import type { ProductView } from '@/lib/fourthwall/product-view';
 import {
   buildSearch,
@@ -31,7 +31,7 @@ interface ProductExperienceProps {
  * (?color=Terracotta&size=M) so a link always opens the same variant.
  */
 export default function ProductExperience({ view, description }: ProductExperienceProps) {
-  const router = useRouter();
+  const openCart = useCartDrawer((state) => state.open);
   const cartMutation = useCartMutation();
   const checkout = useCheckout();
 
@@ -74,9 +74,7 @@ export default function ProductExperience({ view, description }: ProductExperien
       {
         onSuccess: () => {
           setAdded(true);
-          toast.success('Added to cart', {
-            action: { label: 'View cart', onClick: () => router.push('/cart') },
-          });
+          openCart();
           setTimeout(() => setAdded(false), 2000);
         },
         onError: (error) => toast.error(error.message),
@@ -101,10 +99,10 @@ export default function ProductExperience({ view, description }: ProductExperien
 
         {variant && (
           <p className="flex items-baseline gap-3 font-serif text-3xl font-medium text-gold">
-            {formatPrice(Math.round(variant.price * 100), view.currency)}
+            {formatPriceWithCode(Math.round(variant.price * 100), view.currency)}
             {variant.compareAtPrice !== null && (
               <span className="text-lg font-normal text-charcoal/40 line-through">
-                {formatPrice(Math.round(variant.compareAtPrice * 100), view.currency)}
+                {formatPriceWithCode(Math.round(variant.compareAtPrice * 100), view.currency)}
               </span>
             )}
           </p>

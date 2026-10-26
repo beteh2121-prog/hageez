@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter, Playfair_Display, Noto_Serif_Ethiopic } from 'next/font/google';
 import { Toaster } from 'sonner';
 import QueryProvider from '@/providers/QueryProvider';
+import CurrencyProvider from '@/providers/CurrencyProvider';
 import './globals.css';
 
 const playfair = Playfair_Display({
@@ -39,8 +40,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${playfair.variable} ${inter.variable} ${notoSerifEthiopic.variable}`}>
       <body className="bg-cream font-sans text-charcoal">
         <QueryProvider>
-          <Toaster position="top-right" richColors />
-          {children}
+          <CurrencyProvider>
+            <Toaster position="top-right" richColors />
+            {children}
+          </CurrencyProvider>
         </QueryProvider>
       </body>
     </html>
