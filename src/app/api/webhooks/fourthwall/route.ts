@@ -91,7 +91,12 @@ interface FourthwallProductData {
   // Fourthwall's own product slug — what the Storefront API looks products up by.
   slug?: string;
   description?: string;
-  variants?: { unitPrice?: FourthwallMoney }[];
+  // UPGRADE 2: variants can also carry digital signals.
+  variants?: {
+    unitPrice?: FourthwallMoney;
+    digitalFiles?: FourthwallDigitalFile[];
+    type?: string;
+  }[];
   images?: FourthwallImage[];
   // Presence of a non-empty digitalFiles array is the documented signal
   // for "this offer is a digital product" — more reliable than `type`,
@@ -99,6 +104,10 @@ interface FourthwallProductData {
   // include a "digital" value despite the create endpoint accepting
   // type: "digital" on input.
   digitalFiles?: FourthwallDigitalFile[];
+  // UPGRADE 2: extra signals checked when digitalFiles is absent.
+  type?: string;
+  digital?: boolean;
+  isDigital?: boolean;
 }
 
 interface FourthwallOfferVariant {
@@ -235,11 +244,21 @@ function refreshStorefrontCache(payload: FourthwallEvent): void {
   }
 }
 
+// UPGRADE 2: some Fourthwall events wrap the product as { product: {...} }.
+// Unwrap it so id / name / slug are always read from the product itself.
+function unwrapProduct(data: Record<string, unknown>): FourthwallProductData {
+  const inner = data.product;
+  if (typeof inner === 'object' && inner !== null && !Array.isArray(inner)) {
+    return inner as unknown as FourthwallProductData;
+  }
+  return data as unknown as FourthwallProductData;
+}
+
 async function handleEvent(supabase: SupabaseClient, payload: FourthwallEvent): Promise<void> {
   switch (payload.type) {
     case 'PRODUCT_CREATED':
     case 'PRODUCT_UPDATED':
-      await handleProductUpsert(supabase, payload.data as unknown as FourthwallProductData);
+      await handleProductUpsert(supabase, unwrapProduct(payload.data));
       return;
     case 'ORDER_PLACED':
       await handleOrderPlaced(supabase, payload.data as unknown as FourthwallOrderData);
@@ -255,16 +274,87 @@ async function handleEvent(supabase: SupabaseClient, payload: FourthwallEvent): 
   }
 }
 
-function isDigitalProduct(data: FourthwallProductData): boolean {
-  return Array.isArray(data.digitalFiles) && data.digitalFiles.length > 0;
+function hasFiles(files: FourthwallDigitalFile[] | undefined): boolean {
+  return Array.isArray(files) && files.length > 0;
+}
+
+// UPGRADE 2: a product counts as digital if ANY of these signals is present.
+// The original rule (non-empty digitalFiles) is still the first check.
+function hasDigitalSignal(data: FourthwallProductData): boolean {
+  if (hasFiles(data.digitalFiles)) return true;
+  if (data.digital === true || data.isDigital === true) return true;
+  if (typeof data.type === 'string' && data.type.toLowerCase() === 'digital') return true;
+  return (data.variants ?? []).some(
+    (variant) =>
+      hasFiles(variant.digitalFiles) ||
+      (typeof variant.type === 'string' && variant.type.toLowerCase() === 'digital')
+  );
+}
+
+// UPGRADE 2: when the webhook payload has no digital signal, ask the
+// Fourthwall Open API for the full product (needs FOURTHWALL_API_USERNAME
+// and FOURTHWALL_API_PASSWORD). Returns null on any failure — never throws.
+async function fetchProductFromApi(productId: string): Promise<FourthwallProductData | null> {
+  const username = process.env.FOURTHWALL_API_USERNAME;
+  const password = process.env.FOURTHWALL_API_PASSWORD;
+  if (!username || !password) return null;
+
+  try {
+    const response = await fetch(
+      `https://api.fourthwall.com/open-api/v1.0/products/${encodeURIComponent(productId)}`,
+      {
+        headers: {
+          Authorization: `Basic ${btoa(`${username}:${password}`)}`,
+          Accept: 'application/json',
+        },
+      }
+    );
+    if (!response.ok) return null;
+    const json: unknown = await response.json();
+    if (typeof json !== 'object' || json === null || Array.isArray(json)) return null;
+    return unwrapProduct(json as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
+// UPGRADE 2: single place that decides digital vs merch.
+// Order: payload signal → already stored as a download → Open API lookup.
+async function resolveProduct(
+  supabase: SupabaseClient,
+  data: FourthwallProductData
+): Promise<{ isDigital: boolean; product: FourthwallProductData }> {
+  if (hasDigitalSignal(data)) return { isDigital: true, product: data };
+
+  const { data: existing } = await supabase
+    .from('downloads')
+    .select('id')
+    .eq('fourthwall_product_id', data.id)
+    .maybeSingle();
+  if (existing) return { isDigital: true, product: data };
+
+  const apiProduct = await fetchProductFromApi(data.id);
+  if (apiProduct && hasDigitalSignal(apiProduct)) {
+    return { isDigital: true, product: { ...data, ...apiProduct, id: data.id } };
+  }
+
+  if (!apiProduct) {
+    console.warn(
+      `Product ${data.id}: no digital signal in payload and Open API lookup unavailable — treating as merch.`
+    );
+  }
+  return { isDigital: false, product: data };
 }
 
 // UPGRADE: derive downloads.file_type from the Fourthwall file names so the
 // storefront can show the right icon (pdf / epub / mp3 / video).
-function detectFileType(
-  files: FourthwallDigitalFile[] | undefined
-): 'pdf' | 'epub' | 'mp3' | 'video' | null {
-  for (const file of files ?? []) {
+// UPGRADE 2: also reads files that sit on the variants.
+function detectFileType(data: FourthwallProductData): 'pdf' | 'epub' | 'mp3' | 'video' | null {
+  const files: FourthwallDigitalFile[] = [
+    ...(data.digitalFiles ?? []),
+    ...(data.variants ?? []).flatMap((variant) => variant.digitalFiles ?? []),
+  ];
+  for (const file of files) {
     const name = (file.name ?? '').toLowerCase();
     if (name.endsWith('.pdf')) return 'pdf';
     if (name.endsWith('.epub')) return 'epub';
@@ -274,12 +364,13 @@ function detectFileType(
   return null;
 }
 
-async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallProductData): Promise<void> {
+async function handleProductUpsert(supabase: SupabaseClient, rawData: FourthwallProductData): Promise<void> {
+  const { isDigital, product: data } = await resolveProduct(supabase, rawData);
   const slug = data.slug || slugify(data.name ?? '');
   const priceCents = Math.round((data.variants?.[0]?.unitPrice?.value ?? 0) * 100);
 
-  if (isDigitalProduct(data)) {
-    const fileType = detectFileType(data.digitalFiles);
+  if (isDigital) {
+    const fileType = detectFileType(data);
     const { error } = await supabase.from('downloads').upsert(
       {
         fourthwall_product_id: data.id,
