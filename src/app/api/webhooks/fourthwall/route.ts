@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createServiceClient } from '@/lib/supabase/service';
-import { getSignedUrl } from '@/lib/supabase/storage';
-import { deliverDownloadEmail } from '@/lib/email/deliverDownload';
 import { slugify } from '@/lib/utils/slugify';
 
 // Converts a raw HMAC signature to base64 using only Web APIs (btoa),
@@ -174,10 +172,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     .single();
 
   if (logInsertError) {
-    // This should never fail silently — if you're seeing this in Vercel's
-    // logs, that's the real reason webhook_logs stayed empty despite a 200
+    // This should never fail silently — if you're seeing this in the
+    // deployment logs, that's the real reason webhook_logs stayed empty despite a 200
     // response. Common causes: SUPABASE_SERVICE_ROLE_KEY is missing/wrong/
-    // truncated in Vercel's env vars, or NEXT_PUBLIC_SUPABASE_URL is wrong.
+    // truncated in the environment variables, or NEXT_PUBLIC_SUPABASE_URL is wrong.
     console.error('Failed to insert webhook_logs row:', logInsertError.message, logInsertError);
   }
 
@@ -261,11 +259,27 @@ function isDigitalProduct(data: FourthwallProductData): boolean {
   return Array.isArray(data.digitalFiles) && data.digitalFiles.length > 0;
 }
 
+// UPGRADE: derive downloads.file_type from the Fourthwall file names so the
+// storefront can show the right icon (pdf / epub / mp3 / video).
+function detectFileType(
+  files: FourthwallDigitalFile[] | undefined
+): 'pdf' | 'epub' | 'mp3' | 'video' | null {
+  for (const file of files ?? []) {
+    const name = (file.name ?? '').toLowerCase();
+    if (name.endsWith('.pdf')) return 'pdf';
+    if (name.endsWith('.epub')) return 'epub';
+    if (name.endsWith('.mp3')) return 'mp3';
+    if (name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.webm')) return 'video';
+  }
+  return null;
+}
+
 async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallProductData): Promise<void> {
   const slug = data.slug || slugify(data.name ?? '');
   const priceCents = Math.round((data.variants?.[0]?.unitPrice?.value ?? 0) * 100);
 
   if (isDigitalProduct(data)) {
+    const fileType = detectFileType(data.digitalFiles);
     const { error } = await supabase.from('downloads').upsert(
       {
         fourthwall_product_id: data.id,
@@ -273,10 +287,20 @@ async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallPro
         slug,
         description: data.description ?? null,
         price_cents: priceCents,
+        // UPGRADE: only send file_type when detected, so an admin-set value is never wiped.
+        ...(fileType ? { file_type: fileType } : {}),
       },
       { onConflict: 'fourthwall_product_id' }
     );
     if (error) throw new Error(`downloads upsert failed: ${error.message}`);
+
+    // UPGRADE: if this product was earlier synced as merch, archive the stale
+    // merch row so it no longer shows in the Shop. No row = harmless no-op.
+    const { error: archiveError } = await supabase
+      .from('merch')
+      .update({ status: 'archived' })
+      .eq('fourthwall_id', data.id);
+    if (archiveError) throw new Error(`merch archive failed: ${archiveError.message}`);
   } else {
     const { error } = await supabase.from('merch').upsert(
       {
@@ -292,6 +316,18 @@ async function handleProductUpsert(supabase: SupabaseClient, data: FourthwallPro
     );
     if (error) throw new Error(`merch upsert failed: ${error.message}`);
   }
+}
+
+// UPGRADE: link a purchase to a registered user by email, so the downloads
+// page can show the "Purchased" state. Guests simply get null.
+async function findUserIdByEmail(supabase: SupabaseClient, email: string): Promise<string | null> {
+  if (!email) return null;
+  const { data } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email.toLowerCase())
+    .maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
 }
 
 async function handleOrderPlaced(supabase: SupabaseClient, data: FourthwallOrderData): Promise<void> {
@@ -311,45 +347,32 @@ async function handleOrderPlaced(supabase: SupabaseClient, data: FourthwallOrder
   if (orderUpsertError) throw new Error(`orders upsert failed: ${orderUpsertError.message}`);
 
   const offers = data.offers ?? [];
+  const userId = await findUserIdByEmail(supabase, customerEmail);
 
   for (const offer of offers) {
     const { data: download } = await supabase
       .from('downloads')
-      .select('id, file_path')
+      .select('id')
       .eq('fourthwall_product_id', offer.id)
       .single();
 
     if (!download) continue; // Not a digital product we're tracking — skip.
 
-    await supabase.from('download_purchases').insert({
-      download_id: download.id,
-      fourthwall_order_id: data.id,
-      amount_paid_cents: Math.round((offer.variant?.unitPrice?.value ?? 0) * 100),
-      delivery_email: customerEmail,
-    });
-
-    const signedUrl = await getSignedUrl('downloads', download.file_path, 259200); // 72 hours
-
-    const result = await deliverDownloadEmail({
-      downloadId: download.id,
-      email: customerEmail,
-      signedUrl,
-    });
-
-    if (!result.success) {
-      await supabase
-        .from('download_purchases')
-        .update({ pending_delivery_url: signedUrl })
-        .eq('download_id', download.id)
-        .eq('delivery_email', customerEmail);
-
-      await supabase.from('webhook_logs').insert({
-        source: 'fourthwall',
-        event_type: 'ORDER_PLACED',
-        payload: { downloadId: download.id, email: customerEmail, error: result.error },
-        status: 'delivery_failed',
-      });
-    }
+    // UPGRADE (Option A): Fourthwall delivers the paid file itself, so we only
+    // record the purchase. No signed URL, no email from us.
+    // Upsert on (order, download) keeps webhook retries from duplicating rows.
+    const { error: purchaseError } = await supabase.from('download_purchases').upsert(
+      {
+        user_id: userId,
+        download_id: download.id,
+        fourthwall_order_id: data.id,
+        amount_paid_cents: Math.round((offer.variant?.unitPrice?.value ?? 0) * 100),
+        delivery_email: customerEmail,
+        delivered_at: new Date().toISOString(),
+      },
+      { onConflict: 'fourthwall_order_id,download_id', ignoreDuplicates: true }
+    );
+    if (purchaseError) throw new Error(`download_purchases upsert failed: ${purchaseError.message}`);
   }
 }
 
@@ -358,6 +381,15 @@ async function handleOrderUpdated(supabase: SupabaseClient, data: FourthwallOrde
   if (!mappedStatus) return; // Unrecognized status — leave our record as-is.
 
   await supabase.from('orders').update({ status: mappedStatus }).eq('fourthwall_order_id', data.id);
+
+  // UPGRADE: a cancelled order should no longer count as a purchase.
+  if (mappedStatus === 'cancelled') {
+    const { error } = await supabase
+      .from('download_purchases')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('fourthwall_order_id', data.id);
+    if (error) throw new Error(`download_purchases revoke failed: ${error.message}`);
+  }
 }
 
 function mapOrderStatus(
