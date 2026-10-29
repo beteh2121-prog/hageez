@@ -25,7 +25,7 @@ export default function CatalogSyncPanel() {
   const [lastResult, setLastResult] = useState<SyncResponse | null>(null);
   const queryClient = useQueryClient();
 
-  async function runSync() {
+   async function runSync() {
     setSyncing(true);
     setLastResult(null);
     try {
@@ -34,18 +34,33 @@ export default function CatalogSyncPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sources: ['fourthwall', 'gumroad'] }),
       });
-      const data = (await res.json()) as SyncResponse;
+
+      const text = await res.text();
+      let data: SyncResponse | null = null;
+      try {
+        data = JSON.parse(text) as SyncResponse;
+      } catch {
+        data = null;
+      }
+
+      if (!data) {
+        toast.error(`Sync failed (HTTP ${res.status}). Check the Worker logs in Cloudflare.`);
+        return;
+      }
+
+      if (!res.ok || !data.results) {
+        toast.error(data.error ?? `Sync failed (HTTP ${res.status})`);
+        return;
+      }
+
       setLastResult(data);
 
-      if (!res.ok) {
-        toast.error(data.error ?? 'Sync failed');
-      } else if (data.totalErrors > 0) {
+      if (data.totalErrors > 0) {
         toast.message(`Synced ${data.totalSynced} item(s) with ${data.totalErrors} error(s) — see details below.`);
       } else {
         toast.success(`Synced ${data.totalSynced} item(s) successfully.`);
       }
 
-      // Refresh every admin/storefront list that might now be stale.
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'products'] });
       queryClient.invalidateQueries({ queryKey: ['downloads'] });
