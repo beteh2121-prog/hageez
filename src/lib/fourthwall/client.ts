@@ -99,7 +99,7 @@ export async function fetchAllFourthwallProducts(
     const url = `${STOREFRONT_API_BASE}/collections/all/products?storefront_token=${token}&page=${page}&size=50${currencyParam}`;
     const response = await fetch(
       url,
-      options.revalidate ? { next: { revalidate: options.revalidate, tags: ['fw-products'] } } : undefined
+            options.revalidate ? { next: { revalidate: options.revalidate, tags: ['fw-products'] } } : { cache: 'no-store' }
     );
 
     if (!response.ok) {
