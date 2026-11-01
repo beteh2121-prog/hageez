@@ -25,48 +25,27 @@ export default function CatalogSyncPanel() {
   const [lastResult, setLastResult] = useState<SyncResponse | null>(null);
   const queryClient = useQueryClient();
 
-   async function runSync() {
+  async function runSync() {
     setSyncing(true);
     setLastResult(null);
     try {
-      const res = await fetch('/api/admin/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sources: ['fourthwall', 'gumroad'] }),
-      });
+      const res = await fetch('/api/admin/sync/trigger', { method: 'POST' });
+      const data = (await res.json().catch(() => null)) as { started?: boolean; error?: string } | null;
 
-      const text = await res.text();
-      let data: SyncResponse | null = null;
-      try {
-        data = JSON.parse(text) as SyncResponse;
-      } catch {
-        data = null;
-      }
-
-      if (!data) {
-        toast.error(`Sync failed (HTTP ${res.status}). Check the Worker logs in Cloudflare.`);
+      if (!res.ok || !data?.started) {
+        toast.error(data?.error ?? `Could not start the sync (HTTP ${res.status}).`);
         return;
       }
 
-      if (!res.ok || !data.results) {
-        toast.error(data.error ?? `Sync failed (HTTP ${res.status})`);
-        return;
-      }
-
-      setLastResult(data);
-
-      if (data.totalErrors > 0) {
-        toast.message(`Synced ${data.totalSynced} item(s) with ${data.totalErrors} error(s) — see details below.`);
-      } else {
-        toast.success(`Synced ${data.totalSynced} item(s) successfully.`);
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['products'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'products'] });
-      queryClient.invalidateQueries({ queryKey: ['downloads'] });
-      queryClient.invalidateQueries({ queryKey: ['admin', 'downloads'] });
+      toast.success('Sync started. It takes 1–2 minutes — the lists refresh automatically.');
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'products'] });
+        queryClient.invalidateQueries({ queryKey: ['downloads'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'downloads'] });
+      }, 90_000);
     } catch {
-      toast.error('Could not reach the sync endpoint.');
+      toast.error('Could not reach the server.');
     } finally {
       setSyncing(false);
     }
@@ -76,15 +55,14 @@ export default function CatalogSyncPanel() {
     <div className="max-w-2xl rounded-brand-md border border-gold/10 bg-white p-6 shadow-gold-sm">
       <p className="mb-1 font-serif text-lg text-brown">Catalog Sync</p>
       <p className="mb-4 text-sm text-charcoal/60">
-        Pulls your current Fourthwall and Gumroad catalogs into this site. Runs automatically every night, or
-        click below to sync right now — useful after adding new products on either platform.
+        Pulls your current Fourthwall and Gumroad catalogs into this site. Runs automatically every night
+        (on GitHub Actions), or click below to start it right now — useful after adding new products on either
+        platform. Progress and errors are shown in the GitHub &quot;Actions&quot; tab.
       </p>
 
       <p className="mb-4 rounded-brand bg-cream-dark/60 p-3 text-xs text-charcoal/60">
-        To mark a Fourthwall product as a digital download (instead of physical merch), include{' '}
-        <code className="rounded bg-white px-1">[digital]</code> anywhere in its product name on Fourthwall — e.g.
-        &quot;Saints of Ethiopia eBook [digital]&quot;. Every Gumroad product is treated as a digital download
-        automatically.
+        Every Fourthwall product is synced as physical merch. Every Gumroad product is treated as a digital
+        download automatically.
       </p>
 
       <button
@@ -94,7 +72,7 @@ export default function CatalogSyncPanel() {
         className="btn-primary inline-flex items-center gap-2 disabled:opacity-60"
       >
         <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
-        {syncing ? 'Syncing…' : 'Sync Now'}
+        {syncing ? 'Starting…' : 'Sync Now'}
       </button>
 
       {lastResult && (
@@ -105,13 +83,6 @@ export default function CatalogSyncPanel() {
                 {result.source} — {result.synced} synced
                 {result.errors.length > 0 && `, ${result.errors.length} error(s)`}
               </p>
-              {result.errors.length > 0 && (
-                <ul className="mt-2 flex flex-col gap-1 text-xs text-red-600">
-                  {result.errors.map((err, i) => (
-                    <li key={i}>{err}</li>
-                  ))}
-                </ul>
-              )}
             </div>
           ))}
         </div>

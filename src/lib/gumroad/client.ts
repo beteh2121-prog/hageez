@@ -25,11 +25,7 @@ export interface GumroadProduct {
   currency: string;
   formatted_price: string;
   published: boolean;
-  // Gumroad's API does not document a single stable "is this digital"
-  // boolean — every product on Gumroad is fundamentally a digital
-  // download by default (Gumroad does not handle physical fulfillment),
-  // so every product returned by this API is treated as a `downloads`
-  // row in our schema. There is no merch/physical branch for Gumroad.
+  // Every product on Gumroad is treated as a digital download in our schema.
 }
 
 interface GumroadProductsResponse {
@@ -71,6 +67,7 @@ export async function fetchAllGumroadProducts(): Promise<GumroadProduct[]> {
   const token = getAccessToken();
   const response = await fetch(`${GUMROAD_API_BASE}/products`, {
     headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
   });
 
   if (!response.ok) {

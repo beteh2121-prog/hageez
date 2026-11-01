@@ -83,8 +83,8 @@ function getStorefrontToken(): string {
 /**
  * Every product in the built-in "all" collection (paginated internally).
  * Pass `currency` to price them in that currency and `revalidate` to cache
- * (used for the storefront; the catalog sync calls it with no options so it
- * always sees fresh data).
+ * (used for the storefront). With no options (the catalog sync) the request
+ * is never cached, so it always sees fresh data.
  */
 export async function fetchAllFourthwallProducts(
   options: { currency?: string; revalidate?: number } = {}
@@ -99,7 +99,9 @@ export async function fetchAllFourthwallProducts(
     const url = `${STOREFRONT_API_BASE}/collections/all/products?storefront_token=${token}&page=${page}&size=50${currencyParam}`;
     const response = await fetch(
       url,
-            options.revalidate ? { next: { revalidate: options.revalidate, tags: ['fw-products'] } } : { cache: 'no-store' }
+      options.revalidate
+        ? { next: { revalidate: options.revalidate, tags: ['fw-products'] } }
+        : { cache: 'no-store' }
     );
 
     if (!response.ok) {
