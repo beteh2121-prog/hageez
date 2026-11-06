@@ -1,4 +1,4 @@
-name: Nightly catalog sync
+name: Catalog sync
 
 on:
   schedule:
@@ -8,18 +8,18 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FOURTHWALL_STOREFRONT_TOKEN: ${{ secrets.FOURTHWALL_STOREFRONT_TOKEN }}
+      GUMROAD_ACCESS_TOKEN: ${{ secrets.GUMROAD_ACCESS_TOKEN }}
     steps:
-      - name: Trigger catalog sync
-        run: |
-          response=$(curl -s -w "\n%{http_code}" -X POST \
-            -H "Content-Type: application/json" \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            -d '{"sources": ["fourthwall", "gumroad"]}' \
-            "${{ secrets.NEXT_PUBLIC_SITE_URL }}/api/admin/sync")
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-          echo "Response: $body"
-          if [ "$http_code" -ge 400 ]; then
-            echo "Sync failed with status $http_code"
-            exit 1
-          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Sync Fourthwall + Gumroad into Supabase
+        run: npx tsx src/scripts/syncCatalog.ts
